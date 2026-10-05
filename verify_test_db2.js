@@ -1,0 +1,1 @@
+const { PrismaClient } = require('@prisma/client'); const prisma = new PrismaClient({ datasourceUrl: 'file:./database_phase3a_test_20260924_150300.db' }); async function run() { const r = await prisma.trade.count({ where: { rStatus: 'VALID' } }); console.log('validR:', r); } run().finally(()=>prisma.$disconnect());

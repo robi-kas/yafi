@@ -1,0 +1,1 @@
+const { PrismaClient } = require('@prisma/client'); const prisma = new PrismaClient(); async function run() { console.log('StagedRecords:', await prisma.stagedRecord.count()); } run().finally(()=>prisma.$disconnect());

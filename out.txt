@@ -1,0 +1,13 @@
+
+Prisma CLI missing, skipping migrate
+Starting Next.js C:\Users\Robi\AppData\Local\Programs\yafi\resources\app\node_modules\next\dist\bin\next cwd= C:\Users\Robi\AppData\Local\Programs\yafi\resources\app DATABASE_URL= file:C:/Users/Robi/AppData/Roaming/yafi/prisma/database.db
+Backend:    ▲ Next.js 15.5.12
+
+Backend:    - Local:        http://127.0.0.1:3042
+   - Network:      http://127.0.0.1:3042
+
+ ✓ Starting...
+
+Backend Error: [TypeError: routesManifest.dataRoutes is not iterable]
+
+Next.js exited with code 1

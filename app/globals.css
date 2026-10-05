@@ -1,0 +1,171 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+
+
+:root {
+  /* YAFI Light Theme */
+  --background: #fafafa;
+  --foreground: #050505;
+  --card: #ffffff;
+  --card-foreground: #050505;
+  --popover: #ffffff;
+  --popover-foreground: #050505;
+  --primary: #050505;
+  --primary-foreground: #ffffff;
+  --secondary: #f0f0f0;
+  --secondary-foreground: #050505;
+  --muted: #f0f0f0;
+  --muted-foreground: #737373;
+  --accent: #9DCC00;
+  --accent-foreground: #050505;
+  --destructive: #ff4444;
+  --destructive-foreground: #ffffff;
+  --border: rgba(0, 0, 0, 0.08);
+  --input: rgba(0, 0, 0, 0.08);
+  --ring: #9DCC00;
+  --chart-1: #99cc00;
+  --chart-2: #00b3a4;
+  --chart-3: #cc0099;
+  --chart-4: #0099cc;
+  --chart-5: #cc9900;
+  --radius: 0rem;
+  --sidebar: #ffffff;
+  --sidebar-foreground: #050505;
+  --sidebar-primary: #9DCC00;
+  --sidebar-primary-foreground: #050505;
+  --sidebar-accent: #f0f0f0;
+  --sidebar-accent-foreground: #050505;
+  --sidebar-border: rgba(0, 0, 0, 0.08);
+  --sidebar-ring: #9DCC00;
+  
+  /* Custom YAFI tokens */
+  --lime: #9DCC00;
+  --lime-glow: rgba(157, 204, 0, 0.4);
+  --surface: rgba(0, 0, 0, 0.02);
+  --surface-hover: rgba(0, 0, 0, 0.05);
+  --glass: rgba(255, 255, 255, 0.8);
+}
+
+.dark {
+  --background: #050505;
+  --foreground: #ffffff;
+  --card: #0a0a0a;
+  --card-foreground: #ffffff;
+  --popover: #0a0a0a;
+  --popover-foreground: #ffffff;
+  --primary: #ffffff;
+  --primary-foreground: #050505;
+  --secondary: #1a1a1a;
+  --secondary-foreground: #ffffff;
+  --muted: #1a1a1a;
+  --muted-foreground: #737373;
+  --accent: #A3FF12;
+  --accent-foreground: #050505;
+  --destructive: #ff4444;
+  --destructive-foreground: #ffffff;
+  --border: rgba(255, 255, 255, 0.05);
+  --input: rgba(255, 255, 255, 0.05);
+  --ring: #A3FF12;
+  --chart-1: #A3FF12;
+  --chart-2: #00ffcc;
+  --chart-3: #ff00cc;
+  --chart-4: #00ccff;
+  --chart-5: #ffcc00;
+  --sidebar: #050505;
+  --sidebar-foreground: #ffffff;
+  --sidebar-primary: #A3FF12;
+  --sidebar-primary-foreground: #050505;
+  --sidebar-accent: #1a1a1a;
+  --sidebar-accent-foreground: #ffffff;
+  --sidebar-border: rgba(255, 255, 255, 0.05);
+  --sidebar-ring: #A3FF12;
+  
+  /* Custom AETHER tokens - Dark */
+  --lime: #A3FF12;
+  --lime-glow: rgba(163, 255, 18, 0.4);
+  --surface: rgba(255, 255, 255, 0.02);
+  --surface-hover: rgba(255, 255, 255, 0.05);
+  --glass: rgba(10, 10, 10, 0.8);
+}
+
+@layer base {
+  * {
+    @apply border-border outline-none;
+  }
+  body {
+    @apply bg-background text-foreground;
+    letter-spacing: -0.03em;
+  }
+}
+
+/* AETHER Custom Utilities */
+@layer utilities {
+  .glass-panel {
+    @apply bg-glass backdrop-blur-xl border border-border;
+  }
+  
+  .surface-card {
+    @apply bg-surface border border-border transition-colors hover:bg-surface-hover;
+  }
+  
+  .lime-glow {
+    box-shadow: 0 0 20px var(--lime-glow), 0 0 40px var(--lime-glow);
+  }
+  
+  .lime-glow-sm {
+    box-shadow: 0 0 8px var(--lime-glow);
+  }
+  
+  .text-gradient-lime {
+    @apply bg-gradient-to-r from-lime to-white bg-clip-text text-transparent;
+  }
+  
+  .noise-overlay {
+    position: relative;
+  }
+  
+  .noise-overlay::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noise'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noise)'/%3E%3C/svg%3E");
+    opacity: 0.02;
+    pointer-events: none;
+    mix-blend-mode: overlay;
+  }
+  
+  .border-chase {
+    position: relative;
+    overflow: hidden;
+  }
+  
+  .border-chase::after {
+    content: '';
+    position: absolute;
+    inset: 0;
+    background: linear-gradient(90deg, transparent, var(--lime), transparent);
+    transform: translateX(-100%);
+    animation: border-chase 3s linear infinite;
+  }
+  
+  @keyframes border-chase {
+    to {
+      transform: translateX(100%);
+    }
+  }
+  
+  .pulse-live {
+    animation: pulse-live 2s ease-in-out infinite;
+  }
+  
+  @keyframes pulse-live {
+    0%, 100% {
+      opacity: 1;
+    }
+    50% {
+      opacity: 0.5;
+    }
+  }
+}

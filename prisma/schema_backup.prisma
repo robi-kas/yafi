@@ -1,0 +1,114 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = "file:./database.db"
+}
+
+model Account {
+  id          String   @id @default(cuid())
+  name        String
+  type        String   // personal, prop_firm, demo
+  broker      String
+  balance     Float
+  lastUpdated DateTime @default(now())
+  currency    String   @default("USD")
+  isLive      Boolean  @default(false)
+
+  trades      Trade[]
+}
+
+model Strategy {
+  id           String   @id @default(cuid())
+  name         String   @unique
+  description  String
+  rules        String?
+  markets      String?  // JSON stringified array
+  riskPerTrade Float?
+
+  trades       Trade[]
+}
+
+model Trade {
+  id               String   @id @default(cuid())
+  symbol           String
+  market           String   // forex, crypto, stocks, indices, metal
+  direction        String   // buy, sell
+  entryPrice       Float
+  stopLoss         Float
+  takeProfit       Float
+  exitPrice        Float?
+  lotSize          Float
+  profitLoss       Float?
+  result           String?  // win, loss, breakeven
+  riskToReward     Float?
+  entryTime        DateTime
+  exitTime         DateTime?
+  
+  emotionalState   String?
+  notes            String?
+  tags             String?  // JSON stringified array
+  confluences      String?  // JSON stringified array
+  mistakes         String?  // JSON stringified array
+
+  // ICT / Session fields
+  session          String?
+  killZone         String?
+  htfTimeframe     String?
+  htfBias          String?
+  trendAlignment   String?
+  entryModel       String?
+
+  // Entry requirement checkboxes
+  htfPoi           Boolean @default(false)
+  liquiditySweep   Boolean @default(false)
+  mssConfirmed     Boolean @default(false)
+  fvgPresent       Boolean @default(false)
+  ifvgPresent      Boolean @default(false)
+  breakerBlockRetest Boolean @default(false)
+  orderBlockRetest Boolean @default(false)
+  fibonacciRetracement Boolean @default(false)
+
+  // Emotional tracking
+  emotionBefore    Float?
+  emotionAfter     Float?
+  emotionTags      String?  // JSON stringified array
+
+  // Mistake tagging
+  mistakeTags      String?  // JSON stringified array
+
+  // Journal quality
+  entryReason      String?
+  exitReason       String?
+  tradeCause       String?
+  invalidation     String?
+  retakeTrade      String?
+  lessonLearned    String?
+
+  // Planned vs achieved
+  rrPlanned        Float?
+  rrAchieved       Float?
+  tradeStatus      String?  // open, closed
+
+  // Relations
+  accountId        String
+  account          Account  @relation(fields: [accountId], references: [id])
+  
+  strategyId       String?
+  strategy         Strategy? @relation(fields: [strategyId], references: [id])
+
+  screenshots      TradeScreenshot[]
+
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+}
+
+model TradeScreenshot {
+  id          String   @id @default(cuid())
+  path        String
+  tradeId     String
+  trade       Trade    @relation(fields: [tradeId], references: [id], onDelete: Cascade)
+  createdAt   DateTime @default(now())
+}

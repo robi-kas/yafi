@@ -1,0 +1,222 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider  = "postgresql"
+  url       = env("DATABASE_URL")
+  directUrl = env("DIRECT_URL")
+}
+
+model Account {
+  id          String   @id @default(cuid())
+  name        String
+  type        String   // personal, prop_firm, demo
+  broker      String
+  balance     Float
+  lastUpdated DateTime @default(now())
+  currency    String   @default("USD")
+  isLive      Boolean  @default(false)
+  syncStatus  String   @default("ACTIVE") // ACTIVE, PAUSED, MAINTENANCE
+
+  trades      Trade[]
+}
+
+model Strategy {
+  id           String   @id @default(cuid())
+  name         String   @unique
+  description  String
+  rules        String?
+  markets      String?  // JSON stringified array
+  riskPerTrade Float?
+
+  trades       Trade[]
+}
+
+model ImportBatch {
+  id          String   @id @default(cuid())
+  source      String
+  status      String   @default("COMPLETED")
+  importDate  DateTime @default(now())
+  tradeCount  Int
+  hash        String?  @unique
+
+  trades        Trade[]
+  stagedRecords StagedRecord[]
+}
+
+model StagedRecord {
+  id                String   @id @default(cuid())
+  importBatchId     String
+  batch             ImportBatch @relation(fields: [importBatchId], references: [id], onDelete: Cascade)
+  rawSourceRow      String
+  sourceRowNum      Int
+  detectedBroker    String
+  brokerAccountId   String?
+  brokerTicket      String?
+  orderId           String?
+  dealId            String?
+  positionId        String?
+  originalSymbol    String?
+  displaySymbol     String?
+  direction         String?
+  volume            Float?
+  entryTime         DateTime?
+  exitTime          DateTime?
+  entryPrice        Float?
+  exitPrice         Float?
+  commission        Float?
+  swap              Float?
+  grossPnl          Float?
+  netPnl            Float?
+  rawRecordType     String?
+  classification    String?   @default("UNKNOWN")
+  duplicateStatus   String?   @default("NEW_RECORD")
+  parseWarnings     String?
+  parseErrors       String?
+  classificationReason String?
+  duplicateReason      String?
+
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+}
+
+model BrokerOrder {
+  id             String   @id @default(cuid())
+  brokerOrderId  String   @unique
+  tradeId        String?
+  trade          Trade?   @relation(fields: [tradeId], references: [id])
+  type           String
+  status         String
+  requestedPrice Float?
+  volume         Float
+  createdAt      DateTime @default(now())
+}
+
+model BrokerDeal {
+  id           String   @id @default(cuid())
+  brokerDealId String   @unique
+  tradeId      String
+  trade        Trade    @relation(fields: [tradeId], references: [id], onDelete: Cascade)
+  dealType     String
+  price        Float
+  volume       Float
+  commission   Float    @default(0)
+  swap         Float    @default(0)
+  time         DateTime
+  createdAt    DateTime @default(now())
+}
+
+model Trade {
+  id               String   @id @default(cuid())
+  symbol           String
+  originalBrokerSymbol String?
+  displaySymbol    String?
+  market           String   // forex, crypto, stocks, indices, metal
+  direction        String   // buy, sell
+  entryPrice       Float
+  stopLoss         Float
+  takeProfit       Float
+  exitPrice        Float?
+  lotSize          Float
+  profitLoss       Float?
+  result           String?  // win, loss, breakeven
+  riskToReward     Float?
+  entryTime        DateTime
+  exitTime         DateTime?
+  
+  emotionalState   String?
+  notes            String?
+  tags             String?  // JSON stringified array
+  confluences      String?  // JSON stringified array
+  mistakes         String?  // JSON stringified array
+
+  // ICT / Session fields
+  session          String?
+  killZone         String?
+  htfTimeframe     String?
+  htfBias          String?
+  trendAlignment   String?
+  entryModel       String?
+
+  // Entry requirement checkboxes
+  htfPoi           Boolean @default(false)
+  liquiditySweep   Boolean @default(false)
+  mssConfirmed     Boolean @default(false)
+  fvgPresent       Boolean @default(false)
+  ifvgPresent      Boolean @default(false)
+  breakerBlockRetest Boolean @default(false)
+  orderBlockRetest Boolean @default(false)
+  fibonacciRetracement Boolean @default(false)
+
+  // Emotional tracking
+  emotionBefore    Float?
+  emotionAfter     Float?
+  emotionTags      String?  // JSON stringified array
+
+  // Mistake tagging
+  mistakeTags      String?  // JSON stringified array
+
+  // Journal quality
+  entryReason      String?
+  exitReason       String?
+  tradeCause       String?
+  invalidation     String?
+  retakeTrade      String?
+  lessonLearned    String?
+
+  // Planned vs achieved
+  rrPlanned        Float?
+  rrAchieved       Float?
+  tradeStatus      String?  // open, closed
+
+  // Phase 2 additions
+  brokerPositionId String?  @unique
+  importBatchId    String?
+  importBatch      ImportBatch? @relation(fields: [importBatchId], references: [id])
+  initialPlannedRiskUsd Float?
+  rStatus          String   @default("VALID")
+  dataQualityStatus String  @default("VERIFIED")
+
+  // Relations
+  accountId        String
+  account          Account  @relation(fields: [accountId], references: [id])
+  
+  strategyId       String?
+  strategy         Strategy? @relation(fields: [strategyId], references: [id])
+
+  screenshots      TradeScreenshot[]
+  orders           BrokerOrder[]
+  deals            BrokerDeal[]
+
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+}
+
+model TradeScreenshot {
+  id          String   @id @default(cuid())
+  path        String
+  tradeId     String
+  trade       Trade    @relation(fields: [tradeId], references: [id], onDelete: Cascade)
+  createdAt   DateTime @default(now())
+}
+
+model NoteFolder {
+  id        String   @id @default(cuid())
+  name      String
+  color     String?
+  notes     Note[]
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model Note {
+  id        String      @id @default(cuid())
+  title     String
+  content   String
+  color     String?
+  folderId  String?
+  folder    NoteFolder? @relation(fields: [folderId], references: [id], onDelete: SetNull)
+  createdAt DateTime    @default(now())
+  updatedAt DateTime    @updatedAt
+}
