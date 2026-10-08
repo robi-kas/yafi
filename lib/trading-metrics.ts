@@ -48,7 +48,7 @@ export interface CalculatedMetrics {
   warnings: MetricWarnings
 }
 
-const BREAKEVEN_TOLERANCE_USD = 1.0; // Trades within ±$1 are considered breakeven
+const BREAKEVEN_TOLERANCE_USD = 0.001; // Trades within ±$0.001 are considered breakeven
 
 export function calculateMetrics(trades: TradeMetricsInput[]): CalculatedMetrics {
   const warnings: MetricWarnings = {
