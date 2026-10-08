@@ -46,50 +46,73 @@ export function parseMT5HTML(html: string): ParsedTrade[] {
     const doc = parser.parseFromString(html, "text/html")
     const trades: ParsedTrade[] = []
 
-    // MT5 exports a large table - find the "Deals" section
-    // Row structure: Time | Deal | Symbol | Type | Direction | Volume | Price | Order | Commission | Swap | Profit | Balance | Comment
     const tables = doc.querySelectorAll("table")
 
     for (const table of Array.from(tables)) {
         const rows = table.querySelectorAll("tr")
         let headerRow: string[] = []
-        let inDealsSection = false
+        let inPositionsSection = false
 
         for (const row of Array.from(rows)) {
-            const cells = Array.from(row.querySelectorAll("th, td")).map(c => c.textContent?.trim() || "")
+            const rawCells = Array.from(row.querySelectorAll("th, td"))
+            
+            // Stop parsing if we hit Orders or Deals sections
+            const rowText = row.textContent?.toLowerCase() || ""
+            if (rowText.includes("orders") && row.querySelectorAll("th").length > 0) {
+                inPositionsSection = false
+                break
+            }
+            
+            const cells = rawCells
+                .filter(c => !c.classList.contains("hidden") && c.getAttribute("class") !== "hidden")
+                .map(c => c.textContent?.trim() || "")
 
-            // Detect header row
-            if (cells.some(c => c.toLowerCase() === "symbol") && cells.some(c => c.toLowerCase().includes("volume"))) {
+            // Detect Positions header row
+            if (cells.some(c => c.toLowerCase() === "position") && cells.some(c => c.toLowerCase() === "symbol")) {
                 headerRow = cells.map(c => c.toLowerCase())
-                inDealsSection = true
+                inPositionsSection = true
                 continue
             }
 
-            if (!inDealsSection || headerRow.length === 0) continue
+            if (!inPositionsSection || headerRow.length === 0) continue
             if (cells.length < 5) continue
 
-            // Map using header
-            const get = (key: string) => {
-                const idx = headerRow.findIndex(h => h.includes(key))
-                return idx >= 0 ? cells[idx] : ""
+            // The 'get' helper finds the index in the header row
+            const get = (key: string, skipIndex = -1) => {
+                const idx = headerRow.findIndex((h, i) => h.includes(key) && i > skipIndex)
+                return { val: idx >= 0 ? cells[idx] : "", idx }
             }
 
-            const symbol = get("symbol")
-            const typeStr = get("type")
-            const dirStr = get("direction") || typeStr
+            const symbol = get("symbol").val
+            const typeStr = get("type").val
 
-            // Skip balance/credit rows
+            // Skip balance/credit or invalid rows
             if (!symbol || typeStr.toLowerCase() === "balance" || typeStr.toLowerCase() === "credit") continue
 
-            const direction: "buy" | "sell" = dirStr.toLowerCase().includes("buy") ? "buy" : "sell"
-            const volume = parseFloat(get("volume")) || 0
-            const price = parseFloat(get("price")) || 0
-            const profit = parseFloat(get("profit")) || 0
-            const swap = parseFloat(get("swap")) || 0
-            const commission = parseFloat(get("commission")) || 0
-            const time = get("time") || new Date().toISOString()
-            const ticket = get("deal") || get("ticket") || ""
-            const comment = get("comment") || ""
+            const direction: "buy" | "sell" = typeStr.toLowerCase().includes("buy") ? "buy" : "sell"
+            
+            // Volume is usually like "0.01 / 0.01" for closed, or "0.01" for open
+            const volStr = get("volume").val
+            const volume = parseFloat(volStr.split("/")[0]) || 0
+            
+            // Positions have two 'price' and 'time' columns (entry and exit)
+            const entryTimeObj = get("time")
+            const exitTimeObj = get("time", entryTimeObj.idx)
+            
+            const entryPriceObj = get("price")
+            const exitPriceObj = get("price", entryPriceObj.idx)
+            
+            const entryPrice = parseFloat(entryPriceObj.val) || 0
+            const exitPriceStr = exitPriceObj.val
+            const exitPrice = exitPriceStr ? parseFloat(exitPriceStr) : undefined
+            
+            const profit = parseFloat(get("profit").val) || 0
+            const swap = parseFloat(get("swap").val) || 0
+            const commission = parseFloat(get("commission").val) || 0
+            
+            const entryTime = entryTimeObj.val || new Date().toISOString()
+            const exitTime = exitTimeObj.val || undefined
+            const ticket = get("position").val || ""
 
             const netProfit = profit + swap + commission
             const result: "win" | "loss" | "breakeven" =
@@ -99,13 +122,14 @@ export function parseMT5HTML(html: string): ParsedTrade[] {
                 symbol,
                 direction,
                 lotSize: volume,
-                entryPrice: price,
-                profitLoss: netProfit,
-                entryTime: time,
-                ticket,
-                comment,
+                entryPrice,
+                exitPrice,
+                profitLoss: profit !== undefined ? netProfit : undefined,
+                entryTime,
+                exitTime,
                 swap,
                 commission,
+                ticket,
                 result,
             })
         }
