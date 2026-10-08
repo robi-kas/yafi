@@ -1,7 +1,5 @@
 import { NextResponse } from 'next/server';
-import { FileStorageAdapter } from '@/lib/storage/file-adapter';
-
-const db = new FileStorageAdapter();
+import prisma from '@/lib/db';
 
 export async function POST(request: Request) {
     try {
@@ -14,14 +12,36 @@ export async function POST(request: Request) {
         console.log(`Received ${data.deals.length} deals from MT5 Account: ${data.account}`);
         
         let saved = 0;
-        // Fetch existing trades to prevent duplicates
-        const trades = await db.getTrades();
+        
+        // Find or create a default account for the MT5 sync
+        let accountId = '';
+        const existingAccount = await prisma.account.findFirst({
+            where: { name: { contains: data.account?.toString() || 'MT5' } }
+        });
+        
+        if (existingAccount) {
+            accountId = existingAccount.id;
+        } else {
+            const firstAcc = await prisma.account.findFirst();
+            if (firstAcc) {
+                accountId = firstAcc.id;
+            } else {
+                const newAcc = await prisma.account.create({ 
+                    data: { name: `MT5 Account ${data.account || ''}`, type: 'Live', broker: 'MetaTrader 5', balance: 0, currency: 'USD' } 
+                });
+                accountId = newAcc.id;
+            }
+        }
         
         for (const deal of data.deals) {
             const tradeId = `mt5-${deal.ticket}`;
             
             // Skip if we already synced this trade
-            if (trades.some(t => t.id === tradeId)) {
+            const existingTrade = await prisma.trade.findUnique({
+                where: { id: tradeId }
+            });
+            
+            if (existingTrade) {
                 continue;
             }
 
@@ -31,24 +51,28 @@ export async function POST(request: Request) {
             else if (pnl < -0.01) status = 'LOSS';
 
             // DEAL_TYPE_BUY = 0, DEAL_TYPE_SELL = 1
-            // A DEAL_ENTRY_OUT (closing) deal that is a BUY means the original position was a SELL.
             const direction = deal.type === 0 ? 'SELL' : 'BUY';
 
-            const newTrade = {
-                id: tradeId,
-                symbol: deal.symbol,
-                direction: direction,
-                status: status,
-                pnl: pnl,
-                positionSize: deal.volume,
-                // MT5 sends seconds timestamp
-                entryTime: new Date(deal.time * 1000).toISOString(),
-                exitTime: new Date(deal.time * 1000).toISOString(),
-                tags: ['MT5 Auto-Sync'],
-                notes: `Auto-synced from MT5 Account ${data.account}`
-            };
-
-            await db.saveTrade(newTrade);
+            await prisma.trade.create({
+                data: {
+                    id: tradeId,
+                    accountId: accountId,
+                    symbol: deal.symbol,
+                    market: 'forex', // Default assumption for MT5 unless otherwise specified
+                    direction: direction,
+                    entryPrice: deal.price || 0, // Using deal price as entry
+                    stopLoss: 0,
+                    takeProfit: 0,
+                    exitPrice: deal.price || 0,
+                    lotSize: deal.volume,
+                    profitLoss: pnl,
+                    result: status,
+                    entryTime: new Date(deal.time * 1000),
+                    exitTime: new Date(deal.time * 1000),
+                    notes: `Auto-synced from MT5 Account ${data.account}`
+                }
+            });
+            
             saved++;
         }
 
