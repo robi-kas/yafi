@@ -1,14 +1,18 @@
 "use client"
 
-import React from "react"
-
-import { useState } from "react"
+import React, { useMemo, useState } from "react"
 import { DashboardLayout } from "@/components/dashboard/dashboard-layout"
 import { useDashboard } from "@/context/dashboard-context"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
-import { Plus, Edit2, Trash2, TrendingUp, BarChart3 } from "@/components/icons"
+import { Textarea } from "@/components/ui/textarea"
+import { Label } from "@/components/ui/label"
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog"
+import { Plus, Edit2, Trash2, Target, Trophy, BookOpen, AlertCircle } from "@/components/icons"
 import { calculateWinRate, getWinLossCounts, calcResult } from "@/lib/trading-metrics"
+import { Page, PageHeader, Panel, StatCard, EmptyState, formatMoney, pnlTone } from "@/components/kit"
+import BounceLoader from "@/components/ui/bounce-loader"
+import { cn } from "@/lib/utils"
 
 interface StrategyFormData {
   name: string
@@ -18,50 +22,44 @@ interface StrategyFormData {
   riskPerTrade: number
 }
 
+const EMPTY_FORM: StrategyFormData = { name: "", description: "", rules: "", markets: [], riskPerTrade: 2 }
+
 export default function Strategies() {
   const { strategies, trades, addStrategy, updateStrategy, deleteStrategy, isLoading } = useDashboard()
   const [showForm, setShowForm] = useState(false)
   const [editingStrategyId, setEditingStrategyId] = useState<string | null>(null)
-  const [formData, setFormData] = useState<StrategyFormData>({
-    name: "",
-    description: "",
-    rules: "",
-    markets: [],
-    riskPerTrade: 2,
-  })
+  const [formData, setFormData] = useState<StrategyFormData>(EMPTY_FORM)
+  const [saving, setSaving] = useState(false)
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
-
-    if (editingStrategyId) {
-      await updateStrategy(editingStrategyId, formData)
-    } else {
-      await addStrategy({
-        ...formData,
-        trades: 0,
-        winRate: 0,
-        avgWin: 0,
-        avgLoss: 0,
-      })
+    setSaving(true)
+    try {
+      if (editingStrategyId) {
+        await updateStrategy(editingStrategyId, formData)
+      } else {
+        await addStrategy({
+          ...formData,
+          trades: 0,
+          winRate: 0,
+          avgWin: 0,
+          avgLoss: 0,
+        })
+      }
+      resetForm()
+    } finally {
+      setSaving(false)
     }
-
-    resetForm()
   }
 
   const resetForm = () => {
     setShowForm(false)
     setEditingStrategyId(null)
-    setFormData({
-      name: "",
-      description: "",
-      rules: "",
-      markets: [],
-      riskPerTrade: 2,
-    })
+    setFormData(EMPTY_FORM)
   }
 
   const handleEditStrategy = (strategyId: string) => {
-    const strategy = strategies.find(s => s.id === strategyId)
+    const strategy = strategies.find((s) => s.id === strategyId)
     if (strategy) {
       setFormData({
         name: strategy.name,
@@ -75,9 +73,9 @@ export default function Strategies() {
     }
   }
 
-  // Calculate strategy performance
+  // Strategy performance (trades carry the strategy's name)
   const getStrategyStats = (strategyName: string) => {
-    const strategyTrades = trades.filter(t => t.strategy === strategyName)
+    const strategyTrades = trades.filter((t) => t.strategy === strategyName)
     const { wins, losses } = getWinLossCounts(strategyTrades)
     const totalPL = strategyTrades.reduce((sum, t) => sum + (t.profitLoss || 0), 0)
     const avgPL = strategyTrades.length > 0 ? totalPL / strategyTrades.length : 0
@@ -90,245 +88,256 @@ export default function Strategies() {
       winRate,
       totalPL,
       avgPL,
-      avgWin: wins > 0
-        ? strategyTrades
-          .filter(t => calcResult(t) === "win")
-          .reduce((sum, t) => sum + (t.profitLoss || 0), 0) / wins
-        : 0,
-      avgLoss: losses > 0
-        ? strategyTrades
-          .filter(t => calcResult(t) === "loss")
-          .reduce((sum, t) => sum + (t.profitLoss || 0), 0) / losses
-        : 0,
+      avgWin:
+        wins > 0
+          ? strategyTrades.filter((t) => calcResult(t) === "win").reduce((sum, t) => sum + (t.profitLoss || 0), 0) / wins
+          : 0,
+      avgLoss:
+        losses > 0
+          ? strategyTrades.filter((t) => calcResult(t) === "loss").reduce((sum, t) => sum + (t.profitLoss || 0), 0) / losses
+          : 0,
     }
+  }
+
+  const summary = useMemo(() => {
+    const names = new Set(strategies.map((s) => s.name))
+    const byName = strategies.map((s) => ({
+      name: s.name,
+      pnl: trades.filter((t) => t.strategy === s.name).reduce((sum, t) => sum + (t.profitLoss || 0), 0),
+    }))
+    const best = [...byName].sort((a, b) => b.pnl - a.pnl)[0]
+    const unassigned = trades.filter((t) => !t.strategy || !names.has(t.strategy)).length
+    return { best, unassigned }
+  }, [strategies, trades])
+
+  const openNew = () => {
+    setEditingStrategyId(null)
+    setFormData(EMPTY_FORM)
+    setShowForm(true)
   }
 
   return (
     <DashboardLayout>
-      <div className="p-4 md:p-6 lg:p-8">
-        {/* Header */}
-        <div className="mb-6 md:mb-8">
-          <div className="flex items-center justify-between">
-            <div>
-              <h1 className="text-2xl md:text-3xl font-semibold tracking-tight">Trading Strategies</h1>
-              <p className="text-sm md:text-base text-muted-foreground mt-1">
-                Define and track the performance of your trading strategies
-              </p>
-            </div>
-            <Button
-              onClick={() => {
-                setEditingStrategyId(null)
-                setShowForm(true)
-              }}
-              className="gap-2"
-            >
-              <Plus className="w-4 h-4" />
-              <span className="hidden sm:inline">New Strategy</span>
+      <Page>
+        <PageHeader
+          title="Strategies"
+          description="Define your setups and see how each one performs"
+          actions={
+            <Button size="sm" onClick={openNew}>
+              <Plus /> New strategy
             </Button>
-          </div>
-        </div>
+          }
+        />
 
-        {/* Strategy Cards */}
         {isLoading && strategies.length === 0 ? (
-          <div className="flex flex-col items-center justify-center py-20 bg-card border border-border rounded-lg">
-            <div className="w-10 h-10 border-4 border-lime/30 border-t-lime rounded-full animate-spin mb-4" />
-            <p className="text-muted-foreground animate-pulse font-mono tracking-widest text-xs uppercase">Initializing System...</p>
-          </div>
+          <BounceLoader />
         ) : strategies.length > 0 ? (
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-            {strategies.map((strategy) => {
-              const stats = getStrategyStats(strategy.name)
+          <>
+            <div className="mb-4 grid grid-cols-1 gap-3 sm:grid-cols-3 md:mb-6 md:gap-4">
+              <StatCard label="Strategies" value={String(strategies.length)} icon={Target} sub={`${trades.length} trades journaled`} />
+              <StatCard
+                label="Best strategy"
+                value={<span className="font-sans">{summary.best?.name || "—"}</span>}
+                icon={Trophy}
+                sub={summary.best ? `${formatMoney(summary.best.pnl, { sign: true })} net` : undefined}
+              />
+              <StatCard
+                label="Trades without a strategy"
+                value={String(summary.unassigned)}
+                tone={summary.unassigned ? "loss" : "default"}
+                icon={AlertCircle}
+                sub={summary.unassigned ? "Tag them in the journal to improve stats" : "Every trade is tagged"}
+              />
+            </div>
 
-              return (
-                <div key={strategy.id} className="bg-card border border-border rounded-lg p-6">
-                  {/* Header */}
-                  <div className="flex items-start justify-between mb-4">
-                    <div className="flex-1">
-                      <h3 className="text-lg font-semibold">{strategy.name}</h3>
-                      <p className="text-sm text-muted-foreground mt-1 line-clamp-2">
-                        {strategy.description}
-                      </p>
-                    </div>
-                    <div className="flex gap-2 ml-4">
-                      <button
-                        onClick={() => handleEditStrategy(strategy.id)}
-                        className="p-2 hover:bg-background rounded transition-colors"
-                        title="Edit strategy"
-                      >
-                        <Edit2 className="w-4 h-4" />
-                      </button>
-                      <button
-                        onClick={() => {
-                          if (confirm("Delete this strategy?")) {
-                            deleteStrategy(strategy.id)
-                          }
-                        }}
-                        className="p-2 hover:bg-background rounded transition-colors text-red-400 hover:text-red-500"
-                        title="Delete strategy"
-                      >
-                        <Trash2 className="w-4 h-4" />
-                      </button>
-                    </div>
-                  </div>
+            <div className="grid grid-cols-1 gap-4 md:gap-6 lg:grid-cols-2">
+              {strategies.map((strategy) => {
+                const stats = getStrategyStats(strategy.name)
+                const decided = stats.wins + stats.losses
 
-                  {/* Stats Grid */}
-                  <div className="grid grid-cols-3 gap-3 mb-4 p-4 bg-background/50 rounded-lg">
-                    <div>
-                      <p className="text-xs text-muted-foreground">Trades</p>
-                      <p className="text-lg font-semibold">{stats.trades}</p>
+                return (
+                  <Panel key={strategy.id} className="flex flex-col p-5">
+                    <div className="mb-4 flex items-start justify-between gap-3">
+                      <div className="min-w-0 flex-1">
+                        <h3 className="truncate text-base font-semibold">{strategy.name}</h3>
+                        <p className="mt-0.5 line-clamp-2 text-sm text-muted-foreground">
+                          {strategy.description || "No description"}
+                        </p>
+                      </div>
+                      <div className="flex shrink-0 gap-1">
+                        <Button variant="ghost" size="icon-sm" onClick={() => handleEditStrategy(strategy.id)} title="Edit strategy" aria-label="Edit strategy">
+                          <Edit2 />
+                        </Button>
+                        <Button
+                          variant="ghost"
+                          size="icon-sm"
+                          className="text-muted-foreground hover:text-loss"
+                          onClick={() => {
+                            if (confirm(`Delete the strategy "${strategy.name}"?`)) deleteStrategy(strategy.id)
+                          }}
+                          title="Delete strategy"
+                          aria-label="Delete strategy"
+                        >
+                          <Trash2 />
+                        </Button>
+                      </div>
                     </div>
-                    <div>
-                      <p className="text-xs text-muted-foreground">Win Rate</p>
-                      <p className={`text-lg font-semibold ${stats.winRate >= 50 ? "text-green-400" : "text-red-400"}`}>
-                        {stats.winRate.toFixed(1)}%
-                      </p>
-                    </div>
-                    <div>
-                      <p className="text-xs text-muted-foreground">Total P&L</p>
-                      <p className={`text-lg font-semibold ${stats.totalPL > 0 ? "text-green-400" : "text-red-400"}`}>
-                        ${stats.totalPL > 0 ? "+" : ""}{stats.totalPL.toFixed(0)}
-                      </p>
-                    </div>
-                  </div>
 
-                  {/* Detailed Stats */}
-                  <div className="space-y-2 text-sm mb-4">
-                    <div className="flex items-center justify-between">
-                      <span className="text-muted-foreground">Wins / Losses</span>
-                      <span className="font-mono font-semibold">
-                        {stats.wins} / {stats.losses}
-                      </span>
+                    <div className="mb-4 grid grid-cols-3 gap-3 rounded-lg border border-border bg-background/40 p-4">
+                      <div>
+                        <p className="text-xs text-muted-foreground">Trades</p>
+                        <p className="font-mono text-lg font-semibold tabular">{stats.trades}</p>
+                      </div>
+                      <div>
+                        <p className="text-xs text-muted-foreground">Win rate</p>
+                        <p
+                          className={cn(
+                            "font-mono text-lg font-semibold tabular",
+                            decided ? (stats.winRate >= 50 ? "text-profit" : "text-loss") : "text-muted-foreground"
+                          )}
+                        >
+                          {decided ? `${stats.winRate.toFixed(1)}%` : "—"}
+                        </p>
+                      </div>
+                      <div>
+                        <p className="text-xs text-muted-foreground">Net P&L</p>
+                        <p
+                          className={cn(
+                            "font-mono text-lg font-semibold tabular",
+                            pnlTone(stats.totalPL) === "profit" && "text-profit",
+                            pnlTone(stats.totalPL) === "loss" && "text-loss"
+                          )}
+                        >
+                          {formatMoney(stats.totalPL, { sign: true })}
+                        </p>
+                      </div>
                     </div>
-                    <div className="flex items-center justify-between">
-                      <span className="text-muted-foreground">Avg Win</span>
-                      <span className="font-mono font-semibold text-green-400">
-                        ${stats.avgWin.toFixed(2)}
-                      </span>
-                    </div>
-                    <div className="flex items-center justify-between">
-                      <span className="text-muted-foreground">Avg Loss</span>
-                      <span className="font-mono font-semibold text-red-400">
-                        -${Math.abs(stats.avgLoss).toFixed(2)}
-                      </span>
-                    </div>
-                    <div className="flex items-center justify-between">
-                      <span className="text-muted-foreground">Avg per Trade</span>
-                      <span className={`font-mono font-semibold ${stats.avgPL > 0 ? "text-green-400" : "text-red-400"}`}>
-                        ${stats.avgPL.toFixed(2)}
-                      </span>
-                    </div>
-                  </div>
 
-                  {/* Rules Section */}
-                  {strategy.rules && (
-                    <div className="p-3 bg-background/30 rounded border border-border/50">
-                      <p className="text-xs font-medium text-muted-foreground mb-2">Strategy Rules</p>
-                      <p className="text-xs leading-relaxed">{strategy.rules}</p>
-                    </div>
-                  )}
-                </div>
-              )
-            })}
-          </div>
+                    {decided > 0 && (
+                      <div className="mb-4 flex h-1.5 overflow-hidden rounded-full bg-secondary">
+                        <div className="bg-profit" style={{ width: `${(stats.wins / decided) * 100}%` }} />
+                        <div className="bg-loss/70" style={{ width: `${(stats.losses / decided) * 100}%` }} />
+                      </div>
+                    )}
+
+                    <dl className="mb-4 grid grid-cols-2 gap-x-6 gap-y-2 text-sm">
+                      <div className="flex justify-between">
+                        <dt className="text-muted-foreground">Wins / losses</dt>
+                        <dd className="font-mono tabular">
+                          {stats.wins} / {stats.losses}
+                        </dd>
+                      </div>
+                      <div className="flex justify-between">
+                        <dt className="text-muted-foreground">Avg per trade</dt>
+                        <dd className={cn("font-mono tabular", stats.avgPL > 0 ? "text-profit" : stats.avgPL < 0 ? "text-loss" : "")}>
+                          {formatMoney(stats.avgPL, { sign: true })}
+                        </dd>
+                      </div>
+                      <div className="flex justify-between">
+                        <dt className="text-muted-foreground">Avg win</dt>
+                        <dd className="font-mono tabular text-profit">{formatMoney(stats.avgWin)}</dd>
+                      </div>
+                      <div className="flex justify-between">
+                        <dt className="text-muted-foreground">Avg loss</dt>
+                        <dd className="font-mono tabular text-loss">{formatMoney(-Math.abs(stats.avgLoss))}</dd>
+                      </div>
+                    </dl>
+
+                    {strategy.rules && (
+                      <div className="mt-auto rounded-lg border border-border bg-secondary/40 p-3">
+                        <p className="mb-1 text-xs font-medium text-muted-foreground">Rules</p>
+                        <p className="whitespace-pre-line text-sm leading-relaxed">{strategy.rules}</p>
+                      </div>
+                    )}
+                  </Panel>
+                )
+              })}
+            </div>
+          </>
         ) : (
-          <div className="bg-card border border-border rounded-lg p-12 text-center">
-            <BarChart3 className="w-12 h-12 text-muted-foreground mx-auto mb-4" />
-            <p className="text-muted-foreground mb-4">No strategies defined yet</p>
-            <Button
-              onClick={() => setShowForm(true)}
-              className="gap-2"
-            >
-              <Plus className="w-4 h-4" />
-              Create Your First Strategy
-            </Button>
-          </div>
+          <Panel>
+            <EmptyState
+              icon={BookOpen}
+              title="No strategies yet"
+              description="Create a strategy for each setup you trade, then tag trades with it to compare performance."
+              action={
+                <Button size="sm" onClick={openNew}>
+                  <Plus /> Create your first strategy
+                </Button>
+              }
+            />
+          </Panel>
         )}
 
-        {/* Strategy Form Modal */}
-        {showForm && (
-          <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-            <div className="bg-card border border-border rounded-lg max-w-2xl w-full">
-              <div className="p-6 border-b border-border">
-                <h2 className="text-xl font-semibold">
-                  {editingStrategyId ? "Edit Strategy" : "New Strategy"}
-                </h2>
+        <Dialog open={showForm} onOpenChange={(o) => !o && resetForm()}>
+          <DialogContent className="sm:max-w-lg">
+            <DialogHeader>
+              <DialogTitle>{editingStrategyId ? "Edit strategy" : "New strategy"}</DialogTitle>
+              <DialogDescription>Trades tagged with this strategy name are counted in its stats.</DialogDescription>
+            </DialogHeader>
+
+            <form onSubmit={handleSubmit} className="space-y-4">
+              <div className="space-y-1.5">
+                <Label htmlFor="strat-name">Name</Label>
+                <Input
+                  id="strat-name"
+                  value={formData.name}
+                  onChange={(e) => setFormData((prev) => ({ ...prev, name: e.target.value }))}
+                  placeholder="e.g. London breakout"
+                  required
+                />
               </div>
 
-              <form onSubmit={handleSubmit} className="p-6 space-y-6">
-                <div>
-                  <label className="text-sm font-medium">Strategy Name</label>
-                  <Input
-                    value={formData.name}
-                    onChange={(e) => setFormData(prev => ({ ...prev, name: e.target.value }))}
-                    placeholder="e.g., Support/Resistance Bounce"
-                    className="mt-2"
-                    required
-                  />
-                </div>
+              <div className="space-y-1.5">
+                <Label htmlFor="strat-desc">Description</Label>
+                <Textarea
+                  id="strat-desc"
+                  value={formData.description}
+                  onChange={(e) => setFormData((prev) => ({ ...prev, description: e.target.value }))}
+                  placeholder="Brief overview of the setup..."
+                  rows={3}
+                  className="resize-none"
+                />
+              </div>
 
-                <div>
-                  <label className="text-sm font-medium">Description</label>
-                  <textarea
-                    value={formData.description}
-                    onChange={(e) => setFormData(prev => ({ ...prev, description: e.target.value }))}
-                    placeholder="Brief overview of your strategy..."
-                    className="mt-2 w-full px-3 py-2 rounded-md border border-input bg-background resize-none"
-                    rows={3}
-                  />
-                </div>
+              <div className="space-y-1.5">
+                <Label htmlFor="strat-rules">Rules</Label>
+                <Textarea
+                  id="strat-rules"
+                  value={formData.rules}
+                  onChange={(e) => setFormData((prev) => ({ ...prev, rules: e.target.value }))}
+                  placeholder="Entry conditions, invalidation, management..."
+                  rows={4}
+                  className="resize-none"
+                />
+              </div>
 
-                <div>
-                  <label className="text-sm font-medium">Strategy Rules</label>
-                  <textarea
-                    value={formData.rules}
-                    onChange={(e) => setFormData(prev => ({ ...prev, rules: e.target.value }))}
-                    placeholder="Detailed rules and conditions for this strategy..."
-                    className="mt-2 w-full px-3 py-2 rounded-md border border-input bg-background resize-none"
-                    rows={4}
-                  />
-                </div>
+              <div className="space-y-1.5">
+                <Label htmlFor="strat-risk">Risk per trade (%)</Label>
+                <Input
+                  id="strat-risk"
+                  type="number"
+                  step="0.1"
+                  min="0.1"
+                  max="10"
+                  className="font-mono"
+                  value={formData.riskPerTrade}
+                  onChange={(e) => setFormData((prev) => ({ ...prev, riskPerTrade: parseFloat(e.target.value) }))}
+                />
+              </div>
 
-                <div>
-                  <label className="text-sm font-medium">Risk per Trade (%)</label>
-                  <Input
-                    type="number"
-                    step="0.1"
-                    min="0.1"
-                    max="10"
-                    value={formData.riskPerTrade}
-                    onChange={(e) => setFormData(prev => ({ ...prev, riskPerTrade: parseFloat(e.target.value) }))}
-                    className="mt-2"
-                  />
-                </div>
-
-                <div className="flex gap-3 pt-4 border-t border-border">
-                  <Button
-                    type="button"
-                    variant="outline"
-                    onClick={resetForm}
-                  >
-                    Cancel
-                  </Button>
-                  <Button
-                    type="submit"
-                    className="flex-1"
-                    disabled={isLoading}
-                  >
-                    {isLoading ? (
-                      <span className="flex items-center gap-2">
-                        <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
-                        {editingStrategyId ? "Updating..." : "Creating..."}
-                      </span>
-                    ) : (
-                      editingStrategyId ? "Update Strategy" : "Create Strategy"
-                    )}
-                  </Button>
-                </div>
-              </form>
-            </div>
-          </div>
-        )}
-      </div>
+              <DialogFooter>
+                <Button type="button" variant="outline" onClick={resetForm}>
+                  Cancel
+                </Button>
+                <Button type="submit" disabled={saving || !formData.name.trim()}>
+                  {saving ? (editingStrategyId ? "Saving…" : "Creating…") : editingStrategyId ? "Save changes" : "Create strategy"}
+                </Button>
+              </DialogFooter>
+            </form>
+          </DialogContent>
+        </Dialog>
+      </Page>
     </DashboardLayout>
   )
 }

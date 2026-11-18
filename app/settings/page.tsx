@@ -19,31 +19,16 @@ import {
     Loader2,
     Server,
     RefreshCw,
+    FileText,
 } from "@/components/icons"
+import { Copy } from "@/components/icons"
+import { Input } from "@/components/ui/input"
+import { Label } from "@/components/ui/label"
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
+import { Page, PageHeader, Panel, PanelHeader, PanelBody } from "@/components/kit"
+import { cn } from "@/lib/utils"
 import { Button } from "@/components/ui/button"
 import { useCurrentUser } from "@/hooks/use-current-user"
-
-const settingsSections = [
-    {
-        title: "Account Information",
-        icon: User,
-        description: "Manage your personal details and broker connections",
-        items: [
-            { label: "Email", value: "" }, // filled with the signed-in user's email at render time
-            { label: "Role", value: "Forex Trader" },
-        ],
-    },
-    {
-        title: "Preferences",
-        icon: Palette,
-        description: "Customize your trading experience",
-        items: [
-            { label: "Theme", value: "Dark", toggle: true },
-            { label: "Trade Notifications", value: "Enabled", toggle: true },
-            { label: "Daily Summary", value: "Enabled", toggle: true },
-        ],
-    },
-]
 
 export default function SettingsPage() {
     const currentUser = useCurrentUser()
@@ -61,6 +46,7 @@ export default function SettingsPage() {
     const [customFrom, setCustomFrom] = useState("")
     const [customTo, setCustomTo] = useState("")
     const [syncingMt5, setSyncingMt5] = useState(false)
+    const [webhookToken, setWebhookToken] = useState("")
 
     // Load saved MT5 credentials on mount from backend
     useEffect(() => {
@@ -70,6 +56,7 @@ export default function SettingsPage() {
                 if (data.account) setMt5Account(data.account)
                 if (data.password) setMt5Password(data.password)
                 if (data.server) setMt5Server(data.server)
+                if (data.webhookToken) setWebhookToken(data.webhookToken)
             })
             .catch(console.error)
     }, [])
@@ -81,7 +68,7 @@ export default function SettingsPage() {
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ account: mt5Account, password: mt5Password, server: mt5Server })
             })
-            addNotification({ title: 'Saved', message: 'Credentials saved permanently to disk', type: 'success' })
+            addNotification({ title: 'Saved', message: 'MT5 settings saved to your account', type: 'success' })
         } catch (e) {
             addNotification({ title: 'Error', message: 'Failed to save credentials', type: 'error' })
         }
@@ -418,277 +405,200 @@ export default function SettingsPage() {
         }
     }
 
+    const webhookUrl = webhookToken && typeof window !== "undefined"
+        ? `${window.location.origin}/api/mt5/webhook?token=${webhookToken}`
+        : ""
+
+    const Row = ({ title, description, children, className }: { title: React.ReactNode; description?: React.ReactNode; children?: React.ReactNode; className?: string }) => (
+        <div className={cn("flex flex-col gap-3 py-4 first:pt-0 last:pb-0 sm:flex-row sm:items-center sm:justify-between", className)}>
+            <div className="min-w-0">
+                <p className="text-sm font-medium">{title}</p>
+                {description && <p className="mt-0.5 text-sm text-muted-foreground">{description}</p>}
+            </div>
+            {children && <div className="flex shrink-0 items-center gap-2">{children}</div>}
+        </div>
+    )
+
     return (
         <DashboardLayout>
-            <div className="p-8 max-w-4xl">
-                <div className="mb-8">
-                    <div className="flex items-center gap-3 mb-2">
-                        <SettingsIcon className="w-4 h-4 text-emerald-500" />
-                        <span className="text-xs font-mono text-muted-foreground uppercase tracking-wider">
-                            Account Settings
-                        </span>
-                    </div>
-                    <h1 className="text-3xl font-semibold tracking-tight">Settings</h1>
-                    <p className="text-muted-foreground mt-1">
-                        Manage your profile and trading preferences
-                    </p>
-                </div>
+            <Page className="max-w-4xl md:mx-0">
+                <PageHeader title="Settings" description="Your account, broker connection and data" />
 
-                <div className="space-y-6">
-                    {settingsSections.map((section) => (
-                        <div key={section.title} className="bg-card border border-border rounded-lg overflow-hidden">
-                            <div className="p-6 border-b border-border bg-muted/30">
-                                <div className="flex items-center gap-3">
-                                    <section.icon className="w-5 h-5 text-emerald-500" />
-                                    <h2 className="text-lg font-semibold">{section.title}</h2>
-                                </div>
-                                <p className="text-sm text-muted-foreground mt-1">{section.description}</p>
-                            </div>
-                            <div className="p-0">
-                                {section.items.map((item, idx) => (
-                                    <div
-                                        key={item.label}
-                                        className={`flex items-center justify-between p-4 px-6 ${idx !== section.items.length - 1 ? 'border-b border-border' : ''
-                                            }`}
-                                    >
-                                        <span className="text-sm font-medium">{item.label}</span>
-                                        <span className="text-sm text-muted-foreground font-mono">{item.label === "Email" ? (currentUser?.email ?? "…") : item.value}</span>
-                                    </div>
-                                ))}
-                            </div>
-                        </div>
-                    ))}
+                <div className="space-y-4 md:space-y-6">
+                    {/* Account */}
+                    <Panel>
+                        <PanelHeader title="Account" description="Your sign-in details" icon={User} />
+                        <PanelBody className="divide-y divide-border">
+                            <Row title="Email">
+                                <span className="font-mono text-sm text-muted-foreground">{currentUser?.email ?? "…"}</span>
+                            </Row>
+                            <Row title="Role">
+                                <span className="text-sm text-muted-foreground">Forex trader</span>
+                            </Row>
+                        </PanelBody>
+                    </Panel>
 
-                    {/* MT5 Auto-Sync Section */}
-                    <div className="bg-card border border-border rounded-lg overflow-hidden">
-                        <div className="p-6 border-b border-border bg-muted/30">
-                            <div className="flex items-center gap-3">
-                                <Server className="w-5 h-5 text-emerald-500" />
-                                <h2 className="text-lg font-semibold">MT5 Broker Connection</h2>
-                            </div>
-                            <p className="text-sm text-muted-foreground mt-1">Connect your investor account to automatically sync your trading history</p>
-                        </div>
-                        <div className="p-6 space-y-4">
-                            <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-                                <div>
-                                    <label className="text-sm font-medium mb-1.5 block text-muted-foreground">Account Number</label>
-                                    <input 
-                                        type="text" 
-                                        value={mt5Account}
-                                        onChange={(e) => setMt5Account(e.target.value)}
-                                        placeholder="e.g. 12345678"
-                                        className="w-full bg-background border border-border rounded-md h-10 px-3 text-sm focus:outline-none focus:border-emerald-500 transition-colors"
-                                    />
+                    {/* Preferences */}
+                    <Panel>
+                        <PanelHeader title="Preferences" description="Customize your trading experience" icon={Palette} />
+                        <PanelBody className="divide-y divide-border">
+                            <Row title="Theme" description="Switch between light and dark with the button at the bottom of the sidebar." />
+                            {["Trade notifications", "Daily summary"].map((label) => (
+                                <Row key={label} title={label}>
+                                    <span className="rounded-md bg-secondary px-2 py-0.5 text-xs text-muted-foreground">Coming soon</span>
+                                </Row>
+                            ))}
+                        </PanelBody>
+                    </Panel>
+
+                    {/* MT5 */}
+                    <Panel>
+                        <PanelHeader title="MT5 connection" description="Sync your trading history from MetaTrader 5" icon={Server} />
+                        <PanelBody className="space-y-5">
+                            <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+                                <div className="space-y-1.5">
+                                    <Label htmlFor="mt5-account">Account number</Label>
+                                    <Input id="mt5-account" className="font-mono" value={mt5Account} onChange={(e) => setMt5Account(e.target.value)} placeholder="e.g. 12345678" />
                                 </div>
-                                <div>
-                                    <label className="text-sm font-medium mb-1.5 block text-muted-foreground">Investor Password</label>
-                                    <input 
-                                        type="password" 
-                                        value={mt5Password}
-                                        onChange={(e) => setMt5Password(e.target.value)}
-                                        placeholder="Read-only password"
-                                        className="w-full bg-background border border-border rounded-md h-10 px-3 text-sm focus:outline-none focus:border-emerald-500 transition-colors"
-                                    />
+                                <div className="space-y-1.5">
+                                    <Label htmlFor="mt5-password">Investor password</Label>
+                                    <Input id="mt5-password" type="password" value={mt5Password} onChange={(e) => setMt5Password(e.target.value)} placeholder="Read-only password" autoComplete="off" />
                                 </div>
-                                <div>
-                                    <label className="text-sm font-medium mb-1.5 block text-muted-foreground">Server</label>
-                                    <input 
-                                        type="text" 
-                                        value={mt5Server}
-                                        onChange={(e) => setMt5Server(e.target.value)}
-                                        placeholder="e.g. Exness-MT5Real27"
-                                        className="w-full bg-background border border-border rounded-md h-10 px-3 text-sm focus:outline-none focus:border-emerald-500 transition-colors"
-                                    />
+                                <div className="space-y-1.5">
+                                    <Label htmlFor="mt5-server">Server</Label>
+                                    <Input id="mt5-server" value={mt5Server} onChange={(e) => setMt5Server(e.target.value)} placeholder="e.g. Exness-MT5Real27" />
                                 </div>
-                                <div>
-                                    <label className="text-sm font-medium mb-1.5 block text-muted-foreground">Time Period</label>
-                                    <select 
-                                        value={syncPeriod}
-                                        onChange={(e) => setSyncPeriod(e.target.value)}
-                                        className="w-full bg-background border border-border rounded-md h-10 px-3 text-sm focus:outline-none focus:border-emerald-500 transition-colors"
-                                    >
-                                        <option value="today">Today</option>
-                                        <option value="yesterday">Yesterday</option>
-                                        <option value="week">This Week</option>
-                                        <option value="month">This Month</option>
-                                        <option value="year">This Year</option>
-                                        <option value="30days">Last 30 Days</option>
-                                        <option value="custom">Custom Date Range</option>
-                                    </select>
+                                <div className="space-y-1.5">
+                                    <Label>Time period</Label>
+                                    <Select value={syncPeriod} onValueChange={setSyncPeriod}>
+                                        <SelectTrigger className="w-full"><SelectValue /></SelectTrigger>
+                                        <SelectContent>
+                                            <SelectItem value="today">Today</SelectItem>
+                                            <SelectItem value="yesterday">Yesterday</SelectItem>
+                                            <SelectItem value="week">This week</SelectItem>
+                                            <SelectItem value="month">This month</SelectItem>
+                                            <SelectItem value="year">This year</SelectItem>
+                                            <SelectItem value="30days">Last 30 days</SelectItem>
+                                            <SelectItem value="custom">Custom range</SelectItem>
+                                        </SelectContent>
+                                    </Select>
                                 </div>
                                 {syncPeriod === 'custom' && (
                                     <>
-                                        <div>
-                                            <label className="text-sm font-medium mb-1.5 block text-muted-foreground">Start Date</label>
-                                            <input 
-                                                type="date" 
-                                                value={customFrom}
-                                                onChange={(e) => setCustomFrom(e.target.value)}
-                                                className="w-full bg-background border border-border rounded-md h-10 px-3 text-sm focus:outline-none focus:border-emerald-500 transition-colors"
-                                            />
+                                        <div className="space-y-1.5">
+                                            <Label htmlFor="mt5-from">Start date</Label>
+                                            <Input id="mt5-from" type="date" value={customFrom} onChange={(e) => setCustomFrom(e.target.value)} />
                                         </div>
-                                        <div>
-                                            <label className="text-sm font-medium mb-1.5 block text-muted-foreground">End Date</label>
-                                            <input 
-                                                type="date" 
-                                                value={customTo}
-                                                onChange={(e) => setCustomTo(e.target.value)}
-                                                className="w-full bg-background border border-border rounded-md h-10 px-3 text-sm focus:outline-none focus:border-emerald-500 transition-colors"
-                                            />
+                                        <div className="space-y-1.5">
+                                            <Label htmlFor="mt5-to">End date</Label>
+                                            <Input id="mt5-to" type="date" value={customTo} onChange={(e) => setCustomTo(e.target.value)} />
                                         </div>
                                     </>
                                 )}
                             </div>
-                            <div className="pt-2 flex justify-end gap-3">
-                                <Button onClick={saveCredentials} className="gap-2 bg-secondary hover:bg-secondary/80 text-secondary-foreground">
-                                    <Database className="w-4 h-4" />
-                                    Save Credentials
-                                </Button>
-                                <Button onClick={handleSyncMT5} disabled={syncingMt5} className="gap-2 bg-emerald-600 hover:bg-emerald-700 text-white">
-                                    <Download className="w-4 h-4" />
-                                    {syncingMt5 ? 'Syncing...' : 'Auto-Sync Trades'}
-                                </Button>
-                            </div>
-                        </div>
-                    </div>
 
-                    {/* Data & Export Section */}
-                    <div className="bg-card border border-border rounded-lg overflow-hidden">
-                        <div className="p-6 border-b border-border bg-muted/30">
-                            <div className="flex items-center gap-3">
-                                <Database className="w-5 h-5 text-emerald-500" />
-                                <h2 className="text-lg font-semibold">Data & Export</h2>
-                            </div>
-                            <p className="text-sm text-muted-foreground mt-1">Manage your trading data and generate reports</p>
-                        </div>
-                        <div className="p-6 space-y-4">
-                            <div className="flex items-center justify-between p-4 bg-background border border-border rounded-lg">
-                                <div>
-                                    <h3 className="text-sm font-medium">Export Trading Journal</h3>
-                                    <p className="text-xs text-muted-foreground mt-1">Generate a high-quality PDF report of all your trades</p>
-                                </div>
-                                <Button onClick={handleExportPDF} disabled={exporting !== null} className="gap-2">
-                                    {exporting === 'pdf' ? (
-                                        <Loader2 className="w-4 h-4 animate-spin" />
-                                    ) : (
-                                        <Download className="w-4 h-4" />
-                                    )}
-                                    {exporting === 'pdf' ? 'Generating...' : 'Export PDF'}
-                                </Button>
-                            </div>
-                        </div>
-                    </div>
-
-                    {/* Import / Export All Data */}
-                    <div className="bg-card border border-border rounded-lg overflow-hidden">
-                        <div className="p-6 border-b border-border bg-muted/30">
-                            <div className="flex items-center gap-3">
-                                <FileJson className="w-5 h-5 text-emerald-500" />
-                                <h2 className="text-lg font-semibold">Import / Export All Data</h2>
-                            </div>
-                            <p className="text-sm text-muted-foreground mt-1">
-                                Transfer all accounts, strategies, trades, and screenshots as JSON
+                            <p className="text-xs text-muted-foreground">
+                                Direct sync needs the MT5 bridge running on a Windows machine with MetaTrader 5 installed; it isn&apos;t available on the hosted site yet.
                             </p>
-                        </div>
-                        <div className="p-6 space-y-4">
-                            <div className="flex items-center justify-between p-4 bg-background border border-border rounded-lg">
-                                <div>
-                                    <h3 className="text-sm font-medium">Export All Data</h3>
-                                    <p className="text-xs text-muted-foreground mt-1">
-                                        Download accounts ({accounts.length}), strategies ({strategies.length}), and trades ({trades.length}) including screenshots
-                                    </p>
-                                </div>
-                                <Button onClick={handleExportJSON} disabled={exporting !== null} className="gap-2">
-                                    {exporting === 'json' ? (
-                                        <Loader2 className="w-4 h-4 animate-spin" />
-                                    ) : (
-                                        <Download className="w-4 h-4" />
-                                    )}
-                                    {exporting === 'json' ? 'Exporting...' : 'Export JSON'}
+
+                            <div className="flex flex-wrap justify-end gap-2">
+                                <Button variant="outline" onClick={saveCredentials}>
+                                    <Database /> Save settings
+                                </Button>
+                                <Button onClick={handleSyncMT5} disabled={syncingMt5}>
+                                    {syncingMt5 ? <Loader2 className="animate-spin" /> : <RefreshCw />}
+                                    {syncingMt5 ? 'Syncing…' : 'Sync trades'}
                                 </Button>
                             </div>
-                            <div className="flex items-center justify-between p-4 bg-background border border-border rounded-lg">
-                                <div>
-                                    <h3 className="text-sm font-medium">Import All Data</h3>
-                                    <p className="text-xs text-muted-foreground mt-1">
-                                        Upload a previously exported JSON file to restore accounts, strategies, and trades
-                                    </p>
-                                </div>
-                                <div className="flex items-center gap-3">
-                                    {importResult && (
-                                        <div className={`text-xs ${importResult.errors.length === 0 ? "text-emerald-400" : "text-amber-400"}`}>
-                                            {importResult.success} imported
-                                            {importResult.errors.length > 0 && `, ${importResult.errors.length} failed`}
-                                        </div>
-                                    )}
-                                    <Button
-                                        onClick={() => fileInputRef.current?.click()}
-                                        disabled={importing}
-                                        className="gap-2"
-                                    >
-                                        {importing ? (
-                                            <Loader2 className="w-4 h-4 animate-spin" />
-                                        ) : (
-                                            <Upload className="w-4 h-4" />
-                                        )}
-                                        {importing ? "Importing..." : "Import JSON"}
-                                    </Button>
-                                    <input
-                                        ref={fileInputRef}
-                                        type="file"
-                                        accept=".json"
-                                        onChange={handleImportJSON}
-                                        className="hidden"
-                                    />
-                                </div>
-                            </div>
-                            {importResult && importResult.errors.length > 0 && (
-                                <div className="p-3 rounded-lg bg-amber-500/8 border border-amber-500/20">
-                                    <div className="flex items-start gap-2">
-                                        <AlertTriangle className="w-4 h-4 text-amber-400 shrink-0 mt-0.5" />
-                                        <div>
-                                            <p className="text-xs font-medium text-amber-400">Import completed with {importResult.errors.length} error(s)</p>
-                                            <ul className="mt-1 space-y-0.5">
-                                                {importResult.errors.slice(0, 5).map((err, i) => (
-                                                    <li key={i} className="text-[10px] text-amber-400/70">{err}</li>
-                                                ))}
-                                                {importResult.errors.length > 5 && (
-                                                    <li className="text-[10px] text-amber-400/70">...and {importResult.errors.length - 5} more</li>
-                                                )}
-                                            </ul>
-                                        </div>
+
+                            {webhookUrl && (
+                                <div className="rounded-lg border border-border bg-background/40 p-4">
+                                    <p className="text-sm font-medium">Webhook URL for the MT5 Expert Advisor</p>
+                                    <p className="mt-0.5 text-xs text-muted-foreground">Private to your account. Anyone with this URL can add trades to your journal, so don&apos;t share it.</p>
+                                    <div className="mt-3 flex gap-2">
+                                        <Input readOnly value={webhookUrl} className="font-mono text-xs" onFocus={(e) => e.currentTarget.select()} />
+                                        <Button
+                                            variant="outline"
+                                            size="icon"
+                                            title="Copy"
+                                            onClick={async () => {
+                                                await navigator.clipboard.writeText(webhookUrl)
+                                                addNotification({ title: 'Copied', message: 'Webhook URL copied to clipboard', type: 'success' })
+                                            }}
+                                        >
+                                            <Copy className="size-4" />
+                                        </Button>
                                     </div>
                                 </div>
                             )}
-                            {importResult && importResult.errors.length === 0 && importResult.success > 0 && (
-                                <div className="flex items-center gap-2 p-3 rounded-lg bg-emerald-500/8 border border-emerald-500/20">
-                                    <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0" />
-                                    <p className="text-xs text-emerald-400">Successfully imported {importResult.success} item(s)</p>
+                        </PanelBody>
+                    </Panel>
+
+                    {/* Data */}
+                    <Panel>
+                        <PanelHeader title="Data" description="Back up, restore and export your journal" icon={FileJson} />
+                        <PanelBody className="divide-y divide-border">
+                            <Row
+                                title="Export all data"
+                                description={`Download ${accounts.length} account${accounts.length === 1 ? "" : "s"}, ${strategies.length} strateg${strategies.length === 1 ? "y" : "ies"} and ${trades.length} trade${trades.length === 1 ? "" : "s"} as JSON.`}
+                            >
+                                <Button variant="outline" onClick={handleExportJSON} disabled={exporting !== null}>
+                                    {exporting === 'json' ? <Loader2 className="animate-spin" /> : <Download />}
+                                    {exporting === 'json' ? 'Exporting…' : 'Export JSON'}
+                                </Button>
+                            </Row>
+                            <Row title="Import data" description="Restore accounts, strategies and trades from a YAFI JSON export. Existing items are updated, not duplicated.">
+                                <Button variant="outline" onClick={() => fileInputRef.current?.click()} disabled={importing}>
+                                    {importing ? <Loader2 className="animate-spin" /> : <Upload />}
+                                    {importing ? "Importing…" : "Import JSON"}
+                                </Button>
+                                <input ref={fileInputRef} type="file" accept=".json" onChange={handleImportJSON} className="hidden" />
+                            </Row>
+                            {importResult && (
+                                <div className="py-4">
+                                    {importResult.errors.length > 0 ? (
+                                        <div className="flex items-start gap-2 rounded-lg border border-warning/25 bg-warning/10 p-3 text-warning">
+                                            <AlertTriangle className="mt-0.5 size-4 shrink-0" />
+                                            <div className="min-w-0 text-sm">
+                                                <p className="font-medium">
+                                                    {importResult.success} imported, {importResult.errors.length} failed
+                                                </p>
+                                                <ul className="mt-1 space-y-0.5 text-xs opacity-80">
+                                                    {importResult.errors.slice(0, 5).map((err, i) => (
+                                                        <li key={i} className="break-words">{err}</li>
+                                                    ))}
+                                                    {importResult.errors.length > 5 && <li>…and {importResult.errors.length - 5} more</li>}
+                                                </ul>
+                                            </div>
+                                        </div>
+                                    ) : (
+                                        <div className="flex items-center gap-2 rounded-lg border border-profit/25 bg-profit/10 p-3 text-sm text-profit">
+                                            <CheckCircle2 className="size-4 shrink-0" />
+                                            Imported {importResult.success} item{importResult.success === 1 ? "" : "s"} successfully.
+                                        </div>
+                                    )}
                                 </div>
                             )}
-                        </div>
-                    </div>
+                            <Row title="PDF report" description="A printable summary of your performance and every trade.">
+                                <Button variant="outline" onClick={handleExportPDF} disabled={exporting !== null}>
+                                    {exporting === 'pdf' ? <Loader2 className="animate-spin" /> : <FileText />}
+                                    {exporting === 'pdf' ? 'Generating…' : 'Export PDF'}
+                                </Button>
+                            </Row>
+                        </PanelBody>
+                    </Panel>
 
-                    {/* Danger Zone Section */}
-                    <div className="bg-card border border-red-500/30 rounded-lg overflow-hidden">
-                        <div className="p-6 border-b border-border bg-red-500/5">
-                            <div className="flex items-center gap-3">
-                                <AlertTriangle className="w-5 h-5 text-red-500" />
-                                <h2 className="text-lg font-semibold text-red-500">Danger Zone</h2>
-                            </div>
-                            <p className="text-sm text-muted-foreground mt-1">
-                                Destructive actions that cannot be undone
-                            </p>
-                        </div>
-                        <div className="p-6 space-y-4">
-                            <div className="flex items-center justify-between p-4 bg-background border border-border rounded-lg">
-                                <div>
-                                    <h3 className="text-sm font-medium text-red-500">Clear All Data</h3>
-                                    <p className="text-xs text-muted-foreground mt-1">
-                                        Permanently delete all trades, accounts, strategies, and settings.
-                                    </p>
-                                </div>
-                                <Button 
+                    {/* Danger zone */}
+                    <Panel className="border-destructive/30">
+                        <PanelHeader title={<span className="text-destructive">Danger zone</span>} description="These actions can't be undone" icon={AlertTriangle} />
+                        <PanelBody>
+                            <Row
+                                title="Clear all data"
+                                description="Permanently delete all of your trades, strategies and accounts. Export a backup first."
+                            >
+                                <Button
+                                    variant="outline"
+                                    className="border-destructive/40 text-destructive hover:bg-destructive/10 hover:text-destructive"
                                     onClick={async () => {
                                         if (window.confirm("Are you absolutely sure? This will wipe your entire journal and cannot be undone.")) {
                                             try {
@@ -701,17 +611,15 @@ export default function SettingsPage() {
                                                 addNotification({ title: 'Error', message: err.message, type: 'error' });
                                             }
                                         }
-                                    }} 
-                                    className="gap-2 bg-red-500/10 hover:bg-red-500/20 text-red-500 border border-red-500/30"
-                                    variant="outline"
+                                    }}
                                 >
-                                    Clear Database
+                                    Clear data
                                 </Button>
-                            </div>
-                        </div>
-                    </div>
+                            </Row>
+                        </PanelBody>
+                    </Panel>
                 </div>
-            </div>
+            </Page>
         </DashboardLayout>
     )
 }

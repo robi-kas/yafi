@@ -136,20 +136,20 @@ export function WinLossDistributionChart() {
     <div className="w-full h-80">
       <ResponsiveContainer width="100%" height="100%">
         <BarChart data={data}>
-          <CartesianGrid strokeDasharray="3 3" stroke="#333" />
+          <CartesianGrid vertical={false} stroke="var(--border)" />
           <XAxis
             dataKey="range"
-            stroke="#666"
+            stroke="var(--muted-foreground)" tickLine={false} axisLine={false}
             style={{ fontSize: "11px" }}
             angle={-45}
             textAnchor="end"
             height={80}
           />
-          <YAxis stroke="#666" style={{ fontSize: "12px" }} />
-          <Tooltip contentStyle={{ backgroundColor: "#1a1a1a", border: "1px solid #333" }} />
-          <Legend />
-          <Bar dataKey="wins" stackId="a" fill="#10b981" name="Wins" />
-          <Bar dataKey="losses" stackId="a" fill="#ef4444" name="Losses" />
+          <YAxis stroke="var(--muted-foreground)" tickLine={false} axisLine={false} style={{ fontSize: "11px" }} />
+          <Tooltip contentStyle={{ backgroundColor: "var(--popover)", border: "1px solid var(--border)", borderRadius: 8, fontSize: 12, color: "var(--foreground)" }} />
+          <Legend wrapperStyle={{ fontSize: 12, color: "var(--muted-foreground)" }} />
+          <Bar dataKey="wins" stackId="a" fill="var(--profit)" name="Wins" />
+          <Bar dataKey="losses" stackId="a" fill="var(--loss)" name="Losses" />
         </BarChart>
       </ResponsiveContainer>
     </div>
@@ -170,9 +170,9 @@ export function RiskRewardDistributionChart() {
     }))
 
   const getColor = (result?: string) => {
-    if (result === "win") return "#10b981"
-    if (result === "loss") return "#ef4444"
-    return "#8b5cf6"
+    if (result === "win") return "var(--profit)"
+    if (result === "loss") return "var(--loss)"
+    return "var(--chart-3)"
   }
 
   return (
@@ -181,25 +181,25 @@ export function RiskRewardDistributionChart() {
         <ScatterChart
           margin={{ top: 20, right: 20, bottom: 20, left: 20 }}
         >
-          <CartesianGrid strokeDasharray="3 3" stroke="#333" />
+          <CartesianGrid vertical={false} stroke="var(--border)" />
           <XAxis
             type="number"
             dataKey="rr"
             name="Risk:Reward"
-            stroke="#666"
-            style={{ fontSize: "12px" }}
+            stroke="var(--muted-foreground)" tickLine={false} axisLine={false}
+            style={{ fontSize: "11px" }}
             label={{ value: "Risk:Reward Ratio", position: "insideBottomRight", offset: -10 }}
           />
           <YAxis
             type="number"
             dataKey="pnl"
             name="P&L"
-            stroke="#666"
-            style={{ fontSize: "12px" }}
+            stroke="var(--muted-foreground)" tickLine={false} axisLine={false}
+            style={{ fontSize: "11px" }}
             label={{ value: "Profit/Loss ($)", angle: -90, position: "insideLeft" }}
           />
           <Tooltip
-            contentStyle={{ backgroundColor: "#1a1a1a", border: "1px solid #333" }}
+            contentStyle={{ backgroundColor: "var(--popover)", border: "1px solid var(--border)", borderRadius: 8, fontSize: 12, color: "var(--foreground)" }}
             cursor={{ strokeDasharray: "3 3" }}
             formatter={(value) => {
               if (typeof value === "number") {
@@ -208,7 +208,7 @@ export function RiskRewardDistributionChart() {
               return value
             }}
           />
-          <Scatter name="Trades" data={data} fill="#8b5cf6">
+          <Scatter name="Trades" data={data} fill="var(--chart-3)">
             {data.map((entry, index) => (
               <Cell key={`cell-${index}`} fill={getColor(entry.result)} />
             ))}
@@ -227,9 +227,9 @@ export function TradeResultPieChart() {
   const breakeven = trades.filter(t => t.result === "breakeven").length
 
   const data = [
-    { name: "Wins", value: wins, fill: "#10b981" },
-    { name: "Losses", value: losses, fill: "#ef4444" },
-    { name: "Breakeven", value: breakeven, fill: "#8b5cf6" },
+    { name: "Wins", value: wins, fill: "var(--profit)" },
+    { name: "Losses", value: losses, fill: "var(--loss)" },
+    { name: "Breakeven", value: breakeven, fill: "var(--chart-3)" },
   ].filter(d => d.value > 0)
 
   return (
@@ -243,14 +243,14 @@ export function TradeResultPieChart() {
             labelLine={false}
             label={({ name, value }) => `${name}: ${value}`}
             outerRadius={80}
-            fill="#8b5cf6"
+            fill="var(--chart-3)"
             dataKey="value"
           >
             {data.map((entry, index) => (
               <Cell key={`cell-${index}`} fill={entry.fill} />
             ))}
           </Pie>
-          <Tooltip formatter={(value) => `${value} trades`} />
+          <Tooltip contentStyle={{ backgroundColor: "var(--popover)", border: "1px solid var(--border)", borderRadius: 8, fontSize: 12, color: "var(--foreground)" }} formatter={(value) => `${value} trades`} />
         </PieChart>
       </ResponsiveContainer>
     </div>
@@ -287,19 +287,19 @@ export function MonthlyPerformanceChart() {
     <div className="w-full h-80">
       <ResponsiveContainer width="100%" height="100%">
         <BarChart data={monthlyData}>
-          <CartesianGrid strokeDasharray="3 3" stroke="#333" />
+          <CartesianGrid vertical={false} stroke="var(--border)" />
           <XAxis
             dataKey="month"
-            stroke="#666"
-            style={{ fontSize: "12px" }}
+            stroke="var(--muted-foreground)" tickLine={false} axisLine={false}
+            style={{ fontSize: "11px" }}
           />
           <YAxis
-            stroke="#666"
-            style={{ fontSize: "12px" }}
+            stroke="var(--muted-foreground)" tickLine={false} axisLine={false}
+            style={{ fontSize: "11px" }}
             tickFormatter={(value) => `$${value}`}
           />
           <Tooltip
-            contentStyle={{ backgroundColor: "#1a1a1a", border: "1px solid #333" }}
+            contentStyle={{ backgroundColor: "var(--popover)", border: "1px solid var(--border)", borderRadius: 8, fontSize: 12, color: "var(--foreground)" }}
             formatter={(value) => {
               if (typeof value === "number") {
                 return `$${value.toLocaleString()}`
@@ -307,10 +307,10 @@ export function MonthlyPerformanceChart() {
               return value
             }}
           />
-          <Legend />
+          <Legend wrapperStyle={{ fontSize: 12, color: "var(--muted-foreground)" }} />
           <Bar
             dataKey="pnl"
-            fill="#10b981"
+            fill="var(--profit)"
             name="Monthly P&L"
             radius={[8, 8, 0, 0]}
           />
@@ -361,29 +361,29 @@ export function DrawdownChart() {
         >
           <defs>
             <linearGradient id="colorDrawdown" x1="0" y1="0" x2="0" y2="1">
-              <stop offset="5%" stopColor="#ef4444" stopOpacity={0.8} />
-              <stop offset="95%" stopColor="#ef4444" stopOpacity={0} />
+              <stop offset="5%" stopColor="var(--loss)" stopOpacity={0.3} />
+              <stop offset="95%" stopColor="var(--loss)" stopOpacity={0} />
             </linearGradient>
           </defs>
-          <CartesianGrid strokeDasharray="3 3" stroke="#333" />
+          <CartesianGrid vertical={false} stroke="var(--border)" />
           <XAxis
             dataKey="trade"
-            stroke="#666"
-            style={{ fontSize: "12px" }}
+            stroke="var(--muted-foreground)" tickLine={false} axisLine={false}
+            style={{ fontSize: "11px" }}
           />
           <YAxis
-            stroke="#666"
-            style={{ fontSize: "12px" }}
+            stroke="var(--muted-foreground)" tickLine={false} axisLine={false}
+            style={{ fontSize: "11px" }}
             tickFormatter={(value) => `${value.toFixed(1)}%`}
           />
           <Tooltip
-            contentStyle={{ backgroundColor: "#1a1a1a", border: "1px solid #333" }}
+            contentStyle={{ backgroundColor: "var(--popover)", border: "1px solid var(--border)", borderRadius: 8, fontSize: 12, color: "var(--foreground)" }}
             formatter={(value) => `${Number(value).toFixed(2)}%`}
           />
           <Area
             type="monotone"
             dataKey="drawdown"
-            stroke="#ef4444"
+            stroke="var(--loss)"
             fillOpacity={1}
             fill="url(#colorDrawdown)"
             isAnimationActive={false}

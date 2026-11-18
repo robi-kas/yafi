@@ -8,6 +8,18 @@ import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { X, Upload, AlertTriangle } from "@/components/icons"
+import { cn } from "@/lib/utils"
+
+// Native selects/textareas kept (optgroups, required validation) but styled to match ui/input.
+const selectCls =
+  "mt-1.5 h-9 w-full rounded-md border border-input bg-background px-3 text-sm shadow-xs outline-none transition-[color,box-shadow] focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50 dark:bg-input/30"
+const textareaCls =
+  "mt-1.5 w-full resize-none rounded-md border border-input bg-background px-3 py-2 text-sm shadow-xs outline-none transition-[color,box-shadow] placeholder:text-muted-foreground focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50 dark:bg-input/30"
+const sectionCls = "rounded-xl border border-border bg-background/40 p-5"
+const labelCls = "text-xs font-medium text-muted-foreground"
+const chipBase = "rounded-md border px-3 py-1.5 text-xs font-medium transition-colors"
+const chipOff = "border-border bg-background text-muted-foreground hover:bg-accent/60 hover:text-foreground"
+const statBox = "rounded-lg border border-border bg-background p-2.5"
 
 const MARKET_SYMBOLS: Record<string, string[]> = {
   forex: ["EURUSD", "GBPUSD", "USDJPY", "AUDUSD", "USDCAD", "USDCHF", "NZDUSD", "EURGBP", "EURJPY"],
@@ -559,7 +571,7 @@ export function TradeEntryForm({ onClose, initialTrade, defaultEntryTime }: Trad
   const emotionAfter = formData.emotionAfter || 0
 
   const screenshotUploader = (type: "htf" | "entry" | "exit", label: string) => (
-    <div className="border-2 border-dashed border-border rounded-lg p-4 text-center hover:border-emerald-500/50 transition-colors">
+    <div className="rounded-lg border border-dashed border-border bg-background/40 p-4 text-center transition-colors hover:border-brand/50 hover:bg-brand-soft/40">
       <input
         type="file"
         multiple
@@ -568,19 +580,23 @@ export function TradeEntryForm({ onClose, initialTrade, defaultEntryTime }: Trad
         className="hidden"
         id={`screenshot-${type}`}
       />
-      <label htmlFor={`screenshot-${type}`} className="cursor-pointer flex flex-col items-center gap-2">
-        <Upload className="w-4 h-4 text-muted-foreground" />
+      <label htmlFor={`screenshot-${type}`} className="flex cursor-pointer flex-col items-center gap-1.5">
+        <span className="flex size-8 items-center justify-center rounded-full bg-secondary text-muted-foreground">
+          <Upload className="size-4" />
+        </span>
         <p className="text-xs font-medium">{label}</p>
+        <p className="text-[11px] text-muted-foreground">Click to upload</p>
       </label>
       {screenshots[type].length > 0 && (
         <div className="mt-2 flex flex-wrap gap-2">
           {screenshots[type].map((s, i) => (
             <div key={i} className="relative group">
-              <img src={s} alt="" className="w-16 h-12 object-cover rounded border border-border" />
+              <img src={s} alt={`${label} ${i + 1}`} className="h-12 w-16 rounded-md border border-border object-cover" />
               <button
                 type="button"
                 onClick={() => removeScreenshot(type, i)}
-                className="absolute -top-1 -right-1 p-0.5 bg-red-500/80 rounded-full opacity-0 group-hover:opacity-100 transition-opacity"
+                className="absolute -right-1.5 -top-1.5 rounded-full bg-loss p-0.5 opacity-0 transition-opacity group-hover:opacity-100"
+                aria-label="Remove screenshot"
               >
                 <X className="w-3 h-3 text-white" />
               </button>
@@ -592,25 +608,28 @@ export function TradeEntryForm({ onClose, initialTrade, defaultEntryTime }: Trad
   )
 
   return (
-    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-      <div className="bg-card border border-border rounded-lg max-w-3xl w-full max-h-[90vh] overflow-y-auto">
-        <div className="sticky top-0 bg-card border-b border-border p-6 flex items-center justify-between z-10">
-          <h2 className="text-xl font-semibold">
-            {initialTrade ? "Edit Trade" : "New Trade Entry"}
-          </h2>
-          <button onClick={onClose} className="p-1 hover:bg-background rounded transition-colors">
-            <X className="w-5 h-5" />
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4 backdrop-blur-sm">
+      <div className="max-h-[90vh] w-full max-w-3xl overflow-y-auto rounded-xl border border-border bg-card shadow-2xl">
+        <div className="sticky top-0 z-10 flex items-center justify-between border-b border-border bg-card/95 px-6 py-4 backdrop-blur">
+          <div>
+            <h2 className="text-lg font-semibold tracking-tight">
+              {initialTrade ? "Edit trade" : "New trade"}
+            </h2>
+            <p className="text-xs text-muted-foreground">Execution, setup and your review</p>
+          </div>
+          <button onClick={onClose} className="rounded-md p-1.5 text-muted-foreground transition-colors hover:bg-accent hover:text-foreground" aria-label="Close">
+            <X className="size-5" />
           </button>
         </div>
 
-        <form onSubmit={handleSubmit} className="p-6 space-y-6">
+        <form onSubmit={handleSubmit} className="space-y-4 p-6">
           {isImported && (
-            <div className="bg-yellow-500/10 border border-yellow-500/20 rounded-md p-4 mb-6">
+            <div className="rounded-xl border border-warning/25 bg-warning/5 p-4">
               <div className="flex items-start gap-3">
-                <AlertTriangle className="w-5 h-5 text-yellow-500 mt-0.5" />
+                <AlertTriangle className="mt-0.5 size-4 shrink-0 text-warning" />
                 <div>
-                  <h4 className="text-sm font-medium text-yellow-500">Imported trade — journal review incomplete</h4>
-                  <p className="text-xs text-zinc-400 mt-1">
+                  <h4 className="text-sm font-medium">Imported trade — journal review incomplete</h4>
+                  <p className="text-xs text-muted-foreground mt-1">
                     Journal review: {[
                       formData.htfBias, formData.trendAlignment, formData.session, formData.entryModel,
                       formData.entryReason, formData.strategy, formData.emotionBefore, formData.emotionAfter,
@@ -619,21 +638,21 @@ export function TradeEntryForm({ onClose, initialTrade, defaultEntryTime }: Trad
                   </p>
                 </div>
               </div>
-              <p className="text-xs text-zinc-500 mt-3 pt-3 border-t border-yellow-500/10">
+              <p className="text-xs text-muted-foreground mt-3 pt-3 border-t border-warning/15">
                 Broker execution corrections are not available yet. Original MT5 data is preserved for audit.
               </p>
             </div>
           )}
 
           {/* SECTION 1: TRADE BASICS */}
-          <div className={isImported ? "opacity-75" : ""}>
-            <h3 className="text-sm font-semibold mb-3 flex items-center gap-2">
-              <span className="w-5 h-5 rounded-full bg-zinc-500/20 text-zinc-400 flex items-center justify-center text-[10px] font-mono">1</span>
+          <div className={cn(sectionCls, isImported && "opacity-75")}>
+            <h3 className="mb-4 flex items-center gap-2.5 text-sm font-semibold">
+              <span className="flex size-6 items-center justify-center rounded-full bg-brand-soft font-mono text-[11px] font-semibold text-brand tabular">1</span>
               {isImported ? "Broker Execution Data (Read Only)" : "Trade Basics"}
             </h3>
-            <div className="grid grid-cols-2 gap-4">
+            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
               <div>
-                <Label className="text-xs">Symbol</Label>
+                <Label className={labelCls}>Symbol</Label>
                 {showCustomSymbol ? (
                   <div className="flex gap-2 mt-1">
                     <Input 
@@ -665,7 +684,7 @@ export function TradeEntryForm({ onClose, initialTrade, defaultEntryTime }: Trad
                         }
                       }
                     }}
-                    className="w-full mt-1 px-3 py-2 rounded-md border border-input bg-background text-sm"
+                    className={selectCls}
                     required
                   >
                     <option value="">Select Symbol...</option>
@@ -679,11 +698,11 @@ export function TradeEntryForm({ onClose, initialTrade, defaultEntryTime }: Trad
                 )}
               </div>
               <div>
-                <Label className="text-xs">Market</Label>
+                <Label className={labelCls}>Market</Label>
                 <select 
                   value={formData.market}
                   onChange={(e) => handleInputChange("market", e.target.value)}
-                  className="w-full mt-1 px-3 py-2 rounded-md border border-input bg-background text-sm"
+                  className={selectCls}
                 >
                   <option value="forex">Forex</option>
                   <option value="crypto">Crypto</option>
@@ -693,11 +712,11 @@ export function TradeEntryForm({ onClose, initialTrade, defaultEntryTime }: Trad
                 </select>
               </div>
               <div>
-                <Label className="text-xs">Direction</Label>
+                <Label className={labelCls}>Direction</Label>
                 <select 
                   value={formData.direction}
                   onChange={(e) => handleInputChange("direction", e.target.value)}
-                  className="w-full mt-1 px-3 py-2 rounded-md border border-input bg-background text-sm"
+                  className={selectCls}
                   required
                 >
                   <option value="">Select...</option>
@@ -706,23 +725,23 @@ export function TradeEntryForm({ onClose, initialTrade, defaultEntryTime }: Trad
                 </select>
               </div>
               <div>
-                <Label className="text-xs">Risk %</Label>
+                <Label className={labelCls}>Risk %</Label>
                 <Input
                   type="number"
                   step="0.1"
                   value={formData.riskPercent}
                   onChange={(e) => handleInputChange("riskPercent", e.target.value)}
-                  className="mt-1"
+                  className="mt-1.5"
                 />
               </div>
               <div>
-                <Label className="text-xs">Position Size</Label>
+                <Label className={labelCls}>Position Size</Label>
                 <Input 
                   type="number"
                   step="0.0001"
                   value={formData.lotSize}
                   onChange={(e) => handleInputChange("lotSize", e.target.value)}
-                  className="mt-1"
+                  className="mt-1.5"
                   required
                 />
                 {effectiveBalance > 0 && liveStats.riskAmount > 0 && (
@@ -733,11 +752,11 @@ export function TradeEntryForm({ onClose, initialTrade, defaultEntryTime }: Trad
                 )}
               </div>
               <div>
-                <Label className="text-xs">Strategy</Label>
+                <Label className={labelCls}>Strategy</Label>
                 <select
                   value={formData.strategy}
                   onChange={(e) => handleInputChange("strategy", e.target.value)}
-                  className="w-full mt-1 px-3 py-2 rounded-md border border-input bg-background text-sm"
+                  className={selectCls}
                 >
                   <option value="">Select Strategy...</option>
                   {strategies.map((s) => (
@@ -749,11 +768,11 @@ export function TradeEntryForm({ onClose, initialTrade, defaultEntryTime }: Trad
                 </select>
               </div>
               <div>
-                <Label className="text-xs">Trade Status</Label>
+                <Label className={labelCls}>Trade Status</Label>
                 <select 
                   value={formData.tradeStatus}
                   onChange={(e) => handleInputChange("tradeStatus", e.target.value)}
-                  className="w-full mt-1 px-3 py-2 rounded-md border border-input bg-background text-sm"
+                  className={selectCls}
                   required
                 >
                   <option value="open">Open</option>
@@ -764,51 +783,51 @@ export function TradeEntryForm({ onClose, initialTrade, defaultEntryTime }: Trad
           </div>
 
           {/* SECTION 2: PRICE LEVELS */}
-          <div>
-            <h3 className="text-sm font-semibold mb-3 flex items-center gap-2">
-              <span className="w-5 h-5 rounded-full bg-zinc-500/20 text-zinc-400 flex items-center justify-center text-[10px] font-mono">2</span>
+          <div className={sectionCls}>
+            <h3 className="mb-4 flex items-center gap-2.5 text-sm font-semibold">
+              <span className="flex size-6 items-center justify-center rounded-full bg-brand-soft font-mono text-[11px] font-semibold text-brand tabular">2</span>
               Price Levels
             </h3>
-            <div className="grid grid-cols-2 gap-4">
+            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
               <div>
-                <Label className="text-xs">Entry Price</Label>
+                <Label className={labelCls}>Entry Price</Label>
                 <Input 
                   type="number"
                   step="0.00001"
                   value={formData.entryPrice}
                   onChange={(e) => handleInputChange("entryPrice", e.target.value)}
-                  className="mt-1"
+                  className="mt-1.5"
                   required
                 />
               </div>
               <div>
-                <Label className="text-xs">Stop Loss</Label>
+                <Label className={labelCls}>Stop Loss</Label>
                 <Input
                   type="number"
                   step="0.00001"
                   value={formData.stopLoss}
                   onChange={(e) => handleInputChange("stopLoss", e.target.value)}
-                  className="mt-1"
+                  className="mt-1.5"
                 />
               </div>
               <div>
-                <Label className="text-xs">Take Profit</Label>
+                <Label className={labelCls}>Take Profit</Label>
                 <Input
                   type="number"
                   step="0.00001"
                   value={formData.takeProfit}
                   onChange={(e) => handleInputChange("takeProfit", e.target.value)}
-                  className="mt-1"
+                  className="mt-1.5"
                 />
               </div>
               <div>
-                <Label className="text-xs">Exit Price</Label>
+                <Label className={labelCls}>Exit Price</Label>
                 <Input 
                   type="number"
                   step="0.00001"
                   value={formData.exitPrice}
                   onChange={(e) => handleInputChange("exitPrice", e.target.value)}
-                  className="mt-1"
+                  className="mt-1.5"
                   placeholder={formData.tradeStatus === "closed" ? "Required when Closed" : "Optional"}
                 />
                 {(formData.stopLoss > 0 || formData.takeProfit > 0) && (
@@ -839,13 +858,13 @@ export function TradeEntryForm({ onClose, initialTrade, defaultEntryTime }: Trad
                 )}
               </div>
               <div>
-                <Label className="text-xs">RR Planned</Label>
+                <Label className={labelCls}>RR Planned</Label>
                 <Input
                   type="number"
                   step="0.1"
                   value={formData.rrPlanned}
                   onChange={(e) => handleInputChange("rrPlanned", e.target.value)}
-                  className="mt-1"
+                  className="mt-1.5"
                   placeholder="e.g. 3.0"
                 />
               </div>
@@ -853,28 +872,28 @@ export function TradeEntryForm({ onClose, initialTrade, defaultEntryTime }: Trad
 
             {/* PLANNED METRICS (from TP) */}
             {(liveStats.riskPoints > 0 || liveStats.rewardPoints > 0 || liveStats.rrPlanned > 0 || liveStats.plannedLoss !== 0 || liveStats.plannedProfit !== 0) && (
-              <div className="mt-4 p-4 bg-blue-500/5 rounded-lg border border-blue-500/20 space-y-3">
-                <h4 className="text-xs font-semibold text-blue-300 uppercase tracking-wide">Trade Plan (from TP/SL)</h4>
+              <div className="mt-4 space-y-3 rounded-lg border border-border bg-secondary/40 p-4">
+                <h4 className="text-xs font-medium text-muted-foreground">Trade plan (from TP/SL)</h4>
                 <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-                  <div className="p-2 bg-background rounded border border-border">
+                  <div className={statBox}>
                     <p className="text-xs text-muted-foreground">Risk Distance</p>
-                    <p className="font-mono text-sm font-medium">{liveStats.riskPoints.toFixed(2)}</p>
+                    <p className="font-mono text-sm font-medium tabular">{liveStats.riskPoints.toFixed(2)}</p>
                   </div>
-                  <div className="p-2 bg-background rounded border border-border">
+                  <div className={statBox}>
                     <p className="text-xs text-muted-foreground">Reward Distance</p>
-                    <p className="font-mono text-sm font-medium">{liveStats.rewardPoints.toFixed(2)}</p>
+                    <p className="font-mono text-sm font-medium tabular">{liveStats.rewardPoints.toFixed(2)}</p>
                   </div>
-                  <div className="p-2 bg-background rounded border border-border">
+                  <div className={statBox}>
                     <p className="text-xs text-muted-foreground">Planned RR</p>
-                    <p className="font-mono text-sm font-medium text-blue-400">{liveStats.rrPlanned.toFixed(2)}R</p>
+                    <p className="font-mono text-sm font-medium tabular text-brand">{liveStats.rrPlanned.toFixed(2)}R</p>
                   </div>
-                  <div className="p-2 bg-background rounded border border-border">
+                  <div className={statBox}>
                     <p className="text-xs text-muted-foreground">RR Planned</p>
-                    <p className="font-mono text-sm font-medium">{formData.rrPlanned ? `${formData.rrPlanned}R` : "—"}</p>
+                    <p className="font-mono text-sm font-medium tabular">{formData.rrPlanned ? `${formData.rrPlanned}R` : "—"}</p>
                   </div>
                 </div>
                 {formData.rrPlanned && liveStats.rrPlanned > 0 && (
-                  <div className="p-2 bg-muted/30 rounded border border-border">
+                  <div className="rounded-lg border border-border bg-background/60 p-2.5">
                     <p className="text-xs text-muted-foreground">
                       RR Difference: <span className="font-mono font-medium">
                         {(liveStats.rrPlanned - formData.rrPlanned) > 0 ? "+" : ""}{(liveStats.rrPlanned - formData.rrPlanned).toFixed(2)}R
@@ -883,17 +902,17 @@ export function TradeEntryForm({ onClose, initialTrade, defaultEntryTime }: Trad
                   </div>
                 )}
                 <div className="grid grid-cols-2 gap-3 pt-2 border-t border-border">
-                  <div className="p-2 bg-background rounded border border-border">
+                  <div className={statBox}>
                     <p className="text-xs text-muted-foreground">Planned Loss</p>
-                    <p className="font-mono text-sm font-medium text-red-400">${liveStats.plannedLoss.toFixed(2)}</p>
+                    <p className="font-mono text-sm font-medium tabular text-loss">${liveStats.plannedLoss.toFixed(2)}</p>
                   </div>
-                  <div className="p-2 bg-background rounded border border-border">
+                  <div className={statBox}>
                     <p className="text-xs text-muted-foreground">Planned Gain</p>
-                    <p className="font-mono text-sm font-medium text-emerald-400">+${liveStats.plannedProfit.toFixed(2)}</p>
+                    <p className="font-mono text-sm font-medium tabular text-profit">+${liveStats.plannedProfit.toFixed(2)}</p>
                   </div>
                 </div>
                 {(liveStats.riskAmount > 0 || (effectiveBalance > 0 && liveStats.rrPlanned > 0)) && (
-                  <div className="p-2 bg-muted/30 rounded border border-border text-xs text-muted-foreground">
+                  <div className="rounded-lg border border-border bg-background/60 p-2.5 text-xs text-muted-foreground">
                     Position Risk: ${liveStats.riskAmount.toFixed(2)}
                     {effectiveBalance > 0 && liveStats.riskAmount > 0 && (
                       <> ({(liveStats.riskAmount / effectiveBalance * 100).toFixed(2)}% of account)</>
@@ -908,108 +927,108 @@ export function TradeEntryForm({ onClose, initialTrade, defaultEntryTime }: Trad
 
             {/* ACTUAL METRICS (from Exit Price) */}
             {formData.tradeStatus === "closed" && liveStats.actualRewardPoints !== 0 && (
-              <div className="mt-4 p-4 bg-emerald-500/5 rounded-lg border border-emerald-500/20 space-y-3">
-                <h4 className="text-xs font-semibold text-emerald-300 uppercase tracking-wide">Actual Results (from Exit Price)</h4>
+              <div className="mt-4 space-y-3 rounded-lg border border-profit/20 bg-profit/5 p-4">
+                <h4 className="text-xs font-medium text-profit">Actual result (from exit price)</h4>
                 <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-                  <div className="p-2 bg-background rounded border border-border">
+                  <div className={statBox}>
                     <p className="text-xs text-muted-foreground">Risk Distance</p>
-                    <p className="font-mono text-sm font-medium">{liveStats.riskPoints.toFixed(2)}</p>
+                    <p className="font-mono text-sm font-medium tabular">{liveStats.riskPoints.toFixed(2)}</p>
                   </div>
-                  <div className="p-2 bg-background rounded border border-border">
+                  <div className={statBox}>
                     <p className="text-xs text-muted-foreground">Actual Reward</p>
-                    <p className="font-mono text-sm font-medium">{liveStats.actualRewardPoints.toFixed(2)}</p>
+                    <p className="font-mono text-sm font-medium tabular">{liveStats.actualRewardPoints.toFixed(2)}</p>
                   </div>
-                  <div className="p-2 bg-background rounded border border-border">
+                  <div className={statBox}>
                     <p className="text-xs text-muted-foreground">Actual RR</p>
-                    <p className="font-mono text-sm font-medium text-emerald-400">{liveStats.rrActual.toFixed(2)}R</p>
+                    <p className="font-mono text-sm font-medium tabular text-profit">{liveStats.rrActual.toFixed(2)}R</p>
                   </div>
-                  <div className="p-2 bg-background rounded border border-border">
+                  <div className={statBox}>
                     <p className="text-xs text-muted-foreground">Result</p>
-                    <p className="font-mono text-sm font-medium capitalize">{liveStats.actualResult}</p>
+                    <p className="font-mono text-sm font-medium tabular capitalize">{liveStats.actualResult}</p>
                   </div>
                 </div>
                 <div className="grid grid-cols-2 gap-3 pt-2 border-t border-border">
-                  <div className="p-2 bg-background rounded border border-border">
+                  <div className={statBox}>
                     <p className="text-xs text-muted-foreground">Actual P&L</p>
-                    <p className="font-mono text-sm font-medium {liveStats.actualPnL >= 0 ? 'text-emerald-400' : 'text-red-400'}">
+                    <p className={cn("font-mono text-sm font-medium tabular", liveStats.actualPnL >= 0 ? "text-profit" : "text-loss")}>
                       {liveStats.actualPnL >= 0 ? '+' : ''}${liveStats.actualPnL.toFixed(2)}
                     </p>
                   </div>
-                  <div className="p-2 bg-background rounded border border-border">
+                  <div className={statBox}>
                     <p className="text-xs text-muted-foreground">RR Achieved</p>
-                    <p className="font-mono text-sm font-medium">{liveStats.rrActual !== 0 ? `${liveStats.rrActual.toFixed(2)}R` : "—"}</p>
+                    <p className="font-mono text-sm font-medium tabular">{liveStats.rrActual !== 0 ? `${liveStats.rrActual.toFixed(2)}R` : "—"}</p>
                   </div>
                 </div>
               </div>
             )}
 
             {formData.tradeStatus === "open" && (
-              <div className="mt-4 p-4 bg-amber-500/5 rounded-lg border border-amber-500/20">
-                <p className="text-xs text-amber-300">Waiting for trade closure — enter Exit Price to see Actual Results</p>
+              <div className="mt-4 rounded-lg border border-border bg-secondary/40 p-3">
+                <p className="text-xs text-muted-foreground">Trade is open — enter an exit price to see the actual result.</p>
               </div>
             )}
 
             {priceStructureError && (
-              <div className="mt-3 p-3 rounded-md bg-red-500/10 border border-red-500/30 flex items-start gap-2">
-                <AlertTriangle className="w-4 h-4 text-red-400 mt-0.5 shrink-0" />
-                <p className="text-xs text-red-300">{priceStructureError}</p>
+              <div className="mt-3 p-3 rounded-md border border-loss/30 bg-loss/10 flex items-start gap-2">
+                <AlertTriangle className="mt-0.5 size-4 shrink-0 text-loss" />
+                <p className="text-xs text-loss">{priceStructureError}</p>
               </div>
             )}
           </div>
 
           {/* SECTION 3: TIMING */}
-          <div>
-            <h3 className="text-sm font-semibold mb-3 flex items-center gap-2">
-              <span className="w-5 h-5 rounded-full bg-zinc-500/20 text-zinc-400 flex items-center justify-center text-[10px] font-mono">3</span>
+          <div className={sectionCls}>
+            <h3 className="mb-4 flex items-center gap-2.5 text-sm font-semibold">
+              <span className="flex size-6 items-center justify-center rounded-full bg-brand-soft font-mono text-[11px] font-semibold text-brand tabular">3</span>
               Timing
             </h3>
-            <div className="grid grid-cols-2 gap-4">
+            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
               <div>
-                <Label className="text-xs">Entry Time</Label>
+                <Label className={labelCls}>Entry Time</Label>
                 <Input 
                   type="datetime-local"
                   value={formData.entryTime}
                   onChange={(e) => handleInputChange("entryTime", e.target.value)}
-                  className="mt-1"
+                  className="mt-1.5"
                   required
                 />
               </div>
               <div>
-                <Label className="text-xs">Exit Time (Optional)</Label>
+                <Label className={labelCls}>Exit Time (Optional)</Label>
                 <Input 
                   type="datetime-local"
                   value={formData.exitTime}
                   onChange={(e) => handleInputChange("exitTime", e.target.value)}
-                  className="mt-1"
+                  className="mt-1.5"
                 />
               </div>
             </div>
           </div>
 
           {/* SECTION 4: MARKET STRUCTURE */}
-          <div className="bg-muted/30 rounded-lg p-4 border border-border">
-            <h3 className="text-sm font-semibold mb-3 flex items-center gap-2">
-              <span className="w-5 h-5 rounded-full bg-blue-500/20 text-blue-500 flex items-center justify-center text-[10px] font-mono">4</span>
+          <div className={sectionCls}>
+            <h3 className="mb-4 flex items-center gap-2.5 text-sm font-semibold">
+              <span className="flex size-6 items-center justify-center rounded-full bg-brand-soft font-mono text-[11px] font-semibold text-brand tabular">4</span>
               Market Structure
             </h3>
 
             {trendHtfConflict && (
-              <div className="mb-3 p-3 rounded-md bg-amber-500/10 border border-amber-500/30 flex items-start gap-2">
-                <AlertTriangle className="w-4 h-4 text-amber-400 mt-0.5 shrink-0" />
-                <p className="text-xs text-amber-300">
+              <div className="mb-3 p-3 rounded-md border border-warning/30 bg-warning/10 flex items-start gap-2">
+                <AlertTriangle className="mt-0.5 size-4 shrink-0 text-warning" />
+                <p className="text-xs text-foreground">
                   Trend Alignment ({formData.trendAlignment}) conflicts with HTF Bias ({formData.htfBias}).
                   Trade is only valid when they match.
                 </p>
               </div>
             )}
 
-            <div className="grid grid-cols-3 gap-4">
+            <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
               <div>
-                <Label className="text-xs font-medium">HTF Bias</Label>
+                <Label className={labelCls}>HTF Bias</Label>
                 <select
                   value={formData.htfBias}
                   onChange={(e) => handleInputChange("htfBias", e.target.value)}
-                  className="w-full mt-1 px-3 py-2 rounded-md border border-input bg-background text-sm"
+                  className={selectCls}
                   required
                 >
                   <option value="">Select...</option>
@@ -1018,11 +1037,11 @@ export function TradeEntryForm({ onClose, initialTrade, defaultEntryTime }: Trad
                 </select>
               </div>
               <div>
-                <Label className="text-xs font-medium">Trend Alignment</Label>
+                <Label className={labelCls}>Trend Alignment</Label>
                 <select
                   value={formData.trendAlignment}
                   onChange={(e) => handleInputChange("trendAlignment", e.target.value)}
-                  className="w-full mt-1 px-3 py-2 rounded-md border border-input bg-background text-sm"
+                  className={selectCls}
                   required
                 >
                   <option value="">Select...</option>
@@ -1031,11 +1050,11 @@ export function TradeEntryForm({ onClose, initialTrade, defaultEntryTime }: Trad
                 </select>
               </div>
               <div>
-                <Label className="text-xs font-medium">HTF Timeframe</Label>
+                <Label className={labelCls}>HTF Timeframe</Label>
                 <select
                   value={formData.htfTimeframe}
                   onChange={(e) => handleInputChange("htfTimeframe", e.target.value)}
-                  className="w-full mt-1 px-3 py-2 rounded-md border border-input bg-background text-sm"
+                  className={selectCls}
                 >
                   <option value="">Select...</option>
                   <option value="Daily">Daily</option>
@@ -1047,18 +1066,18 @@ export function TradeEntryForm({ onClose, initialTrade, defaultEntryTime }: Trad
           </div>
 
           {/* SECTION 5: SESSION DATA */}
-          <div>
-            <h3 className="text-sm font-semibold mb-3 flex items-center gap-2">
-              <span className="w-5 h-5 rounded-full bg-orange-500/20 text-orange-500 flex items-center justify-center text-[10px] font-mono">5</span>
+          <div className={sectionCls}>
+            <h3 className="mb-4 flex items-center gap-2.5 text-sm font-semibold">
+              <span className="flex size-6 items-center justify-center rounded-full bg-brand-soft font-mono text-[11px] font-semibold text-brand tabular">5</span>
               Session Data
             </h3>
-            <div className="grid grid-cols-2 gap-4">
+            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
               <div>
-                <Label className="text-xs">Session</Label>
+                <Label className={labelCls}>Session</Label>
                 <select
                   value={formData.session}
                   onChange={(e) => handleInputChange("session", e.target.value)}
-                  className="w-full mt-1 px-3 py-2 rounded-md border border-input bg-background text-sm"
+                  className={selectCls}
                   required
                 >
                   <option value="">Select Session...</option>
@@ -1068,11 +1087,11 @@ export function TradeEntryForm({ onClose, initialTrade, defaultEntryTime }: Trad
                 </select>
               </div>
               <div>
-                <Label className="text-xs">Kill Zone</Label>
+                <Label className={labelCls}>Kill Zone</Label>
                 <select
                   value={formData.killZone}
                   onChange={(e) => handleInputChange("killZone", e.target.value)}
-                  className="w-full mt-1 px-3 py-2 rounded-md border border-input bg-background text-sm"
+                  className={selectCls}
                 >
                   <option value="">Select Kill Zone...</option>
                   {killZoneOptions.map((opt) => (
@@ -1084,22 +1103,19 @@ export function TradeEntryForm({ onClose, initialTrade, defaultEntryTime }: Trad
           </div>
 
           {/* SECTION 6: SETUP VALIDATION */}
-          <div className="bg-muted/30 rounded-lg p-4 border border-border">
-            <h3 className="text-sm font-semibold mb-3 flex items-center gap-2">
-              <span className="w-5 h-5 rounded-full bg-emerald-500/20 text-emerald-500 flex items-center justify-center text-[10px] font-mono">6</span>
+          <div className={sectionCls}>
+            <h3 className="mb-4 flex items-center gap-2.5 text-sm font-semibold">
+              <span className="flex size-6 items-center justify-center rounded-full bg-brand-soft font-mono text-[11px] font-semibold text-brand tabular">6</span>
               Setup Validation
             </h3>
-            <p className="text-xs text-muted-foreground mb-3">{setupScore} / {setupTotal} conditions met</p>
+            <p className="mb-3 text-xs text-muted-foreground"><span className="font-mono font-medium text-foreground tabular">{setupScore} / {setupTotal}</span> conditions met</p>
             <div className="flex flex-wrap gap-2">
               {setupValidationKeys.map((opt) => (
                 <button
                   key={opt.key}
                   type="button"
                   onClick={() => toggleCheckbox(opt.key)}
-                  className={`px-3 py-1.5 rounded-md text-xs border transition-all ${(formData as any)[opt.key]
-                    ? "bg-emerald-500/20 border-emerald-500/50 text-emerald-400"
-                    : "bg-background border-border hover:border-emerald-500/50"
-                    }`}
+                  className={cn(chipBase, (formData as any)[opt.key] ? "border-brand/40 bg-brand-soft text-brand" : chipOff)}
                 >
                   {opt.label}
                 </button>
@@ -1108,17 +1124,17 @@ export function TradeEntryForm({ onClose, initialTrade, defaultEntryTime }: Trad
           </div>
 
           {/* SECTION 7: ENTRY MODEL */}
-          <div>
-            <h3 className="text-sm font-semibold mb-3 flex items-center gap-2">
-              <span className="w-5 h-5 rounded-full bg-cyan-500/20 text-cyan-500 flex items-center justify-center text-[10px] font-mono">7</span>
+          <div className={sectionCls}>
+            <h3 className="mb-4 flex items-center gap-2.5 text-sm font-semibold">
+              <span className="flex size-6 items-center justify-center rounded-full bg-brand-soft font-mono text-[11px] font-semibold text-brand tabular">7</span>
               Entry Model
             </h3>
             <div>
-              <Label className="text-xs">Primary Entry Model</Label>
+              <Label className={labelCls}>Primary Entry Model</Label>
               <select
                 value={formData.entryModel}
                 onChange={(e) => handleInputChange("entryModel", e.target.value)}
-                className="w-full mt-1 px-3 py-2 rounded-md border border-input bg-background text-sm"
+                className={selectCls}
                 required
               >
                 <option value="">Select Entry Model...</option>
@@ -1130,55 +1146,55 @@ export function TradeEntryForm({ onClose, initialTrade, defaultEntryTime }: Trad
           </div>
 
           {/* SECTION 8: JOURNAL REASONING */}
-          <div className="bg-muted/30 rounded-lg p-4 border border-border">
-            <h3 className="text-sm font-semibold mb-3 flex items-center gap-2">
-              <span className="w-5 h-5 rounded-full bg-rose-500/20 text-rose-500 flex items-center justify-center text-[10px] font-mono">8</span>
+          <div className={sectionCls}>
+            <h3 className="mb-4 flex items-center gap-2.5 text-sm font-semibold">
+              <span className="flex size-6 items-center justify-center rounded-full bg-brand-soft font-mono text-[11px] font-semibold text-brand tabular">8</span>
               Journal Reasoning
             </h3>
             <div className="space-y-3">
               <div>
-                <Label className="text-xs">Why did you enter? <span className="text-red-400">*</span></Label>
+                <Label className={labelCls}>Why did you enter? <span className="text-loss">*</span></Label>
                 <textarea
                   value={formData.entryReason}
                   onChange={(e) => handleInputChange("entryReason", e.target.value)}
                   placeholder="Technical reason for entry..."
-                  className="w-full mt-1 px-3 py-2 rounded-md border border-input bg-background text-sm resize-none focus:ring-1 focus:ring-rose-500"
+                  className={textareaCls}
                   rows={2}
                   required
                 />
               </div>
               <div>
-                <Label className="text-xs">Why did you exit?</Label>
+                <Label className={labelCls}>Why did you exit?</Label>
                 <textarea
                   value={formData.exitReason}
                   onChange={(e) => handleInputChange("exitReason", e.target.value)}
                   placeholder="Reason for exit..."
-                  className="w-full mt-1 px-3 py-2 rounded-md border border-input bg-background text-sm resize-none focus:ring-1 focus:ring-rose-500"
+                  className={textareaCls}
                   rows={2}
                 />
               </div>
               <div>
-                <Label className="text-xs">What caused the move?</Label>
+                <Label className={labelCls}>What caused the move?</Label>
                 <textarea
                   value={formData.tradeCause}
                   onChange={(e) => handleInputChange("tradeCause", e.target.value)}
                   placeholder="e.g. News, Liquidity grab, FVG fill..."
-                  className="w-full mt-1 px-3 py-2 rounded-md border border-input bg-background text-sm resize-none focus:ring-1 focus:ring-rose-500"
+                  className={textareaCls}
                   rows={2}
                 />
               </div>
               <div>
-                <Label className="text-xs">Lesson learned</Label>
+                <Label className={labelCls}>Lesson learned</Label>
                 <textarea
                   value={formData.lessonLearned}
                   onChange={(e) => handleInputChange("lessonLearned", e.target.value)}
                   placeholder="What will you do differently?"
-                  className="w-full mt-1 px-3 py-2 rounded-md border border-input bg-background text-sm resize-none focus:ring-1 focus:ring-rose-500"
+                  className={textareaCls}
                   rows={2}
                 />
               </div>
               <div>
-                <Label className="text-xs">Would take again?</Label>
+                <Label className={labelCls}>Would take again?</Label>
                 <div className="flex gap-4 mt-1">
                   {["Yes", "No"].map((opt) => (
                     <label key={opt} className="flex items-center gap-2 cursor-pointer">
@@ -1188,7 +1204,7 @@ export function TradeEntryForm({ onClose, initialTrade, defaultEntryTime }: Trad
                         value={opt}
                         checked={formData.retakeTrade === opt}
                         onChange={(e) => handleInputChange("retakeTrade", e.target.value)}
-                        className="text-rose-500 focus:ring-rose-500"
+                        className="accent-brand"
                       />
                       <span className="text-sm">{opt}</span>
                     </label>
@@ -1199,14 +1215,14 @@ export function TradeEntryForm({ onClose, initialTrade, defaultEntryTime }: Trad
           </div>
 
           {/* SECTION 9: EMOTIONAL TRACKING */}
-          <div>
-            <h3 className="text-sm font-semibold mb-3 flex items-center gap-2">
-              <span className="w-5 h-5 rounded-full bg-pink-500/20 text-pink-500 flex items-center justify-center text-[10px] font-mono">9</span>
+          <div className={sectionCls}>
+            <h3 className="mb-4 flex items-center gap-2.5 text-sm font-semibold">
+              <span className="flex size-6 items-center justify-center rounded-full bg-brand-soft font-mono text-[11px] font-semibold text-brand tabular">9</span>
               Emotional Tracking
             </h3>
-            <div className="grid grid-cols-2 gap-6 mb-4">
+            <div className="mb-5 grid grid-cols-1 gap-6 sm:grid-cols-2">
               <div>
-                <Label className="text-xs">Before Trade Emotion</Label>
+                <Label className={labelCls}>Before Trade Emotion</Label>
                 <div className="flex items-center gap-3 mt-1">
                   <input
                     type="range"
@@ -1214,9 +1230,9 @@ export function TradeEntryForm({ onClose, initialTrade, defaultEntryTime }: Trad
                     max="10"
                     value={emotionBefore}
                     onChange={(e) => handleInputChange("emotionBefore", parseInt(e.target.value))}
-                    className="flex-1 accent-pink-500"
+                    className="flex-1 accent-brand"
                   />
-                  <span className="text-sm font-mono w-6 text-center">{emotionBefore}</span>
+                  <span className="w-6 text-center font-mono text-sm tabular">{emotionBefore}</span>
                 </div>
                 <div className="flex justify-between text-xs text-muted-foreground mt-1">
                   <span>Calm (1)</span>
@@ -1224,7 +1240,7 @@ export function TradeEntryForm({ onClose, initialTrade, defaultEntryTime }: Trad
                 </div>
               </div>
               <div>
-                <Label className="text-xs">After Trade Emotion</Label>
+                <Label className={labelCls}>After Trade Emotion</Label>
                 <div className="flex items-center gap-3 mt-1">
                   <input
                     type="range"
@@ -1232,9 +1248,9 @@ export function TradeEntryForm({ onClose, initialTrade, defaultEntryTime }: Trad
                     max="10"
                     value={emotionAfter}
                     onChange={(e) => handleInputChange("emotionAfter", parseInt(e.target.value))}
-                    className="flex-1 accent-pink-500"
+                    className="flex-1 accent-brand"
                   />
-                  <span className="text-sm font-mono w-6 text-center">{emotionAfter}</span>
+                  <span className="w-6 text-center font-mono text-sm tabular">{emotionAfter}</span>
                 </div>
                 <div className="flex justify-between text-xs text-muted-foreground mt-1">
                   <span>Calm (1)</span>
@@ -1243,17 +1259,14 @@ export function TradeEntryForm({ onClose, initialTrade, defaultEntryTime }: Trad
               </div>
             </div>
             <div>
-              <Label className="text-xs">Emotion Tags</Label>
+              <Label className={labelCls}>Emotion Tags</Label>
               <div className="flex flex-wrap gap-2 mt-2">
                 {emotionCheckboxOptions.map((opt) => (
                   <button
                     key={opt}
                     type="button"
                     onClick={() => toggleSelection("emotionTags", opt)}
-                    className={`px-3 py-1.5 rounded-md text-xs border transition-all ${formData.emotionTags.includes(opt)
-                      ? "bg-pink-500/20 border-pink-500/50 text-pink-400"
-                      : "bg-background border-border hover:border-pink-500/50"
-                      }`}
+                    className={cn(chipBase, formData.emotionTags.includes(opt) ? "border-brand/40 bg-brand-soft text-brand" : chipOff)}
                   >
                     {opt}
                   </button>
@@ -1263,39 +1276,36 @@ export function TradeEntryForm({ onClose, initialTrade, defaultEntryTime }: Trad
           </div>
 
            {/* SECTION 10: PERFORMANCE REVIEW */}
-           <div className="bg-muted/30 rounded-lg p-4 border border-border">
-             <h3 className="text-sm font-semibold mb-3 flex items-center gap-2">
-               <span className="w-5 h-5 rounded-full bg-red-500/20 text-red-500 flex items-center justify-center text-[10px] font-mono">10</span>
+           <div className={sectionCls}>
+             <h3 className="mb-4 flex items-center gap-2.5 text-sm font-semibold">
+               <span className="flex size-6 items-center justify-center rounded-full bg-brand-soft font-mono text-[11px] font-semibold text-brand tabular">10</span>
                Performance Review
              </h3>
              <div className="space-y-4">
                <div>
-                 <Label className="text-xs">Mistake Tags</Label>
+                 <Label className={labelCls}>Mistake Tags</Label>
                  <div className="flex flex-wrap gap-2 mt-2">
                    {mistakeTagOptions.map((opt) => (
                      <button
                        key={opt}
                        type="button"
                        onClick={() => toggleSelection("mistakeTags", opt)}
-                       className={`px-3 py-1.5 rounded-md text-xs border transition-all ${formData.mistakeTags.includes(opt)
-                         ? "bg-red-500/20 border-red-500/50 text-red-400"
-                         : "bg-background border-border hover:border-red-500/50"
-                         }`}
+                       className={cn(chipBase, formData.mistakeTags.includes(opt) ? "border-loss/40 bg-loss/10 text-loss" : chipOff)}
                      >
                        {opt}
                      </button>
                    ))}
                  </div>
                </div>
-               <div className="grid grid-cols-3 gap-4">
+               <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
                  <div>
-                   <Label className="text-xs">RR Planned</Label>
+                   <Label className={labelCls}>RR Planned</Label>
                    <Input
                      type="number"
                      step="0.1"
                      value={formData.rrPlanned}
                      onChange={(e) => handleInputChange("rrPlanned", e.target.value)}
-                     className="mt-1"
+                     className="mt-1.5"
                      placeholder="3.0"
                    />
                  </div>
@@ -1304,12 +1314,12 @@ export function TradeEntryForm({ onClose, initialTrade, defaultEntryTime }: Trad
            </div>
 
            {/* SECTION 11: SCREENSHOTS */}
-           <div>
-             <h3 className="text-sm font-semibold mb-3 flex items-center gap-2">
-               <span className="w-5 h-5 rounded-full bg-zinc-500/20 text-zinc-400 flex items-center justify-center text-[10px] font-mono">11</span>
+           <div className={sectionCls}>
+             <h3 className="mb-4 flex items-center gap-2.5 text-sm font-semibold">
+               <span className="flex size-6 items-center justify-center rounded-full bg-brand-soft font-mono text-[11px] font-semibold text-brand tabular">11</span>
                Screenshots
              </h3>
-             <div className="grid grid-cols-3 gap-3">
+             <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
                {screenshotUploader("htf", "HTF Screenshot")}
                {screenshotUploader("entry", "Entry Screenshot")}
                {screenshotUploader("exit", "Exit Screenshot")}
@@ -1328,30 +1338,30 @@ export function TradeEntryForm({ onClose, initialTrade, defaultEntryTime }: Trad
            </div>
 
           {/* SECTION 12: ADDITIONAL NOTES */}
-          <div>
-            <h3 className="text-sm font-semibold mb-3 flex items-center gap-2">
-              <span className="w-5 h-5 rounded-full bg-zinc-500/20 text-zinc-400 flex items-center justify-center text-[10px] font-mono">12</span>
+          <div className={sectionCls}>
+            <h3 className="mb-4 flex items-center gap-2.5 text-sm font-semibold">
+              <span className="flex size-6 items-center justify-center rounded-full bg-brand-soft font-mono text-[11px] font-semibold text-brand tabular">12</span>
               Additional Notes
             </h3>
             <textarea
               value={formData.notes}
               onChange={(e) => handleInputChange("notes", e.target.value)}
               placeholder="Any additional thoughts, observations, or context..."
-              className="w-full mt-1 px-3 py-2 rounded-md border border-input bg-background text-sm resize-none focus:ring-1 focus:ring-emerald-500"
+              className={textareaCls}
               rows={3}
             />
           </div>
 
           {/* Validation Error */}
           {validationError && (
-            <div className="p-3 rounded-md bg-red-500/10 border border-red-500/30 flex items-start gap-2">
-              <AlertTriangle className="w-4 h-4 text-red-400 mt-0.5 shrink-0" />
-              <p className="text-xs text-red-300">{validationError}</p>
+            <div className="p-3 rounded-md border border-loss/30 bg-loss/10 flex items-start gap-2">
+              <AlertTriangle className="mt-0.5 size-4 shrink-0 text-loss" />
+              <p className="text-xs text-loss">{validationError}</p>
             </div>
           )}
 
           {/* Actions */}
-          <div className="flex gap-3 pt-4 border-t border-border">
+          <div className="flex gap-3 border-t border-border pt-4">
             <Button type="button" variant="outline" onClick={onClose}>Cancel</Button>
             <Button type="submit" className="flex-1" disabled={isLoading}>
               {isLoading ? "Saving..." : (initialTrade ? "Update Trade" : "Record Trade")}
@@ -1360,8 +1370,8 @@ export function TradeEntryForm({ onClose, initialTrade, defaultEntryTime }: Trad
 
           {/* Trade Summary Card */}
           {(liveStats.riskPoints > 0 || liveStats.actualPnL !== 0 || liveStats.plannedProfit !== 0 || liveStats.plannedLoss !== 0) && (
-            <div className="mt-4 p-4 bg-muted/50 rounded-lg border border-border">
-              <h4 className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-3">Trade Summary</h4>
+            <div className="rounded-xl border border-border bg-secondary/40 p-5">
+              <h4 className="mb-3 text-sm font-semibold">Trade summary</h4>
               <div className="grid grid-cols-2 md:grid-cols-4 gap-3 text-sm">
                 <div>
                   <p className="text-xs text-muted-foreground">Status</p>
@@ -1377,13 +1387,13 @@ export function TradeEntryForm({ onClose, initialTrade, defaultEntryTime }: Trad
                 </div>
                 <div>
                   <p className="text-xs text-muted-foreground">Actual RR</p>
-                  <p className="font-mono font-medium {liveStats.rrActual > 0 ? 'text-emerald-400' : liveStats.rrActual < 0 ? 'text-red-400' : 'text-muted-foreground'}">
+                  <p className={cn("font-mono font-medium tabular", liveStats.rrActual > 0 ? "text-profit" : liveStats.rrActual < 0 ? "text-loss" : "text-muted-foreground")}>
                     {liveStats.rrActual !== 0 ? `${liveStats.rrActual.toFixed(2)}R` : "—"}
                   </p>
                 </div>
                 <div>
                   <p className="text-xs text-muted-foreground">P&L</p>
-                  <p className="font-mono font-medium {liveStats.actualPnL > 0 ? 'text-emerald-400' : liveStats.actualPnL < 0 ? 'text-red-400' : liveStats.plannedProfit + liveStats.plannedLoss > 0 ? 'text-emerald-400' : 'text-red-400'}">
+                  <p className={cn("font-mono font-medium tabular", liveStats.actualPnL > 0 ? "text-profit" : liveStats.actualPnL < 0 ? "text-loss" : liveStats.plannedProfit + liveStats.plannedLoss > 0 ? "text-profit" : "text-loss")}>
                     {liveStats.actualPnL !== 0
                       ? `${liveStats.actualPnL >= 0 ? '+' : ''}$${liveStats.actualPnL.toFixed(2)}`
                       : liveStats.plannedProfit + liveStats.plannedLoss !== 0
@@ -1411,11 +1421,11 @@ export function TradeEntryForm({ onClose, initialTrade, defaultEntryTime }: Trad
         {/* Live P&L preview */}
         {(Number(formData.exitPrice) > 0 || (liveStats.riskPoints > 0 && liveStats.rewardPoints > 0)) && (
           <div className="px-6 pb-6">
-            <div className="bg-muted p-3 rounded-lg">
+            <div className="rounded-lg border border-border bg-secondary/40 p-3">
               {liveStats.actualPnL !== 0 ? (
                 <>
                   <p className="text-sm font-medium">
-                    Actual P&L: <span className={liveStats.actualPnL > 0 ? 'text-emerald-400' : liveStats.actualPnL < 0 ? 'text-red-400' : 'text-muted-foreground'}>
+                    Actual P&L: <span className={liveStats.actualPnL > 0 ? 'text-profit' : liveStats.actualPnL < 0 ? 'text-loss' : 'text-muted-foreground'}>
                       {liveStats.actualPnL >= 0 ? '+' : ''}${liveStats.actualPnL.toFixed(2)}
                     </span>
                   </p>
@@ -1428,7 +1438,7 @@ export function TradeEntryForm({ onClose, initialTrade, defaultEntryTime }: Trad
               ) : (
                 <>
                   <p className="text-sm font-medium">
-                    Planned P&L: <span className={liveStats.plannedProfit + liveStats.plannedLoss > 0 ? 'text-emerald-400' : liveStats.plannedProfit + liveStats.plannedLoss < 0 ? 'text-red-400' : 'text-muted-foreground'}>
+                    Planned P&L: <span className={liveStats.plannedProfit + liveStats.plannedLoss > 0 ? 'text-profit' : liveStats.plannedProfit + liveStats.plannedLoss < 0 ? 'text-loss' : 'text-muted-foreground'}>
                       ${(liveStats.plannedProfit + liveStats.plannedLoss).toFixed(2)}
                     </span>
                   </p>

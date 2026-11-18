@@ -1,14 +1,17 @@
 "use client"
 
-import React from "react"
-
-import { useState } from "react"
+import React, { useMemo, useState } from "react"
 import { DashboardLayout } from "@/components/dashboard/dashboard-layout"
-import { useDashboard } from "@/context/dashboard-context"
+import { useDashboard, Account } from "@/context/dashboard-context"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
-import { Plus, Edit2, Trash2, DollarSign, TrendingUp } from "@/components/icons"
-import { calculateWinRate, getWinLossCounts } from "@/lib/trading-metrics"
+import { Label } from "@/components/ui/label"
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog"
+import { Plus, Edit2, Trash2, Wallet, BookOpen, Target, TrendingUp, TrendingDown } from "@/components/icons"
+import { getWinLossCounts, calculateWinRate } from "@/lib/trading-metrics"
+import { Page, PageHeader, Panel, StatCard, EmptyState, formatMoney, pnlTone } from "@/components/kit"
+import { cn } from "@/lib/utils"
 
 interface AccountFormData {
   name: string
@@ -17,20 +20,24 @@ interface AccountFormData {
   balance: number
 }
 
+const TYPE_LABEL: Record<string, string> = { personal: "Personal", prop_firm: "Prop firm", demo: "Demo" }
+const TYPE_STYLE: Record<string, string> = {
+  personal: "bg-sky-500/10 text-sky-400",
+  prop_firm: "bg-violet-500/10 text-violet-400",
+  demo: "bg-secondary text-muted-foreground",
+}
+
+const EMPTY_FORM: AccountFormData = { name: "", type: "personal", broker: "", balance: 10000 }
+
 export default function Accounts() {
   const { accounts, trades, addAccount, updateAccount, deleteAccount } = useDashboard()
   const [showForm, setShowForm] = useState(false)
   const [editingAccountId, setEditingAccountId] = useState<string | null>(null)
-  const [formData, setFormData] = useState<AccountFormData>({
-    name: "",
-    type: "personal",
-    broker: "",
-    balance: 10000,
-  })
+  const [formData, setFormData] = useState<AccountFormData>(EMPTY_FORM)
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault()
-    
+
     if (editingAccountId) {
       updateAccount(editingAccountId, formData)
     } else {
@@ -39,322 +46,229 @@ export default function Accounts() {
         lastUpdated: "Just now",
       })
     }
-    
+
     resetForm()
   }
 
   const resetForm = () => {
     setShowForm(false)
     setEditingAccountId(null)
-    setFormData({
-      name: "",
-      type: "personal",
-      broker: "",
-      balance: 10000,
-    })
+    setFormData(EMPTY_FORM)
   }
 
-  const handleEditAccount = (accountId: string) => {
-    const account = accounts.find(a => a.id === accountId)
-    if (account) {
-      setFormData({
-        name: account.name,
-        type: account.type,
-        broker: account.broker,
-        balance: account.balance,
-      })
-      setEditingAccountId(accountId)
-      setShowForm(true)
+  const handleEditAccount = (account: Account) => {
+    setFormData({ name: account.name, type: account.type, broker: account.broker, balance: account.balance })
+    setEditingAccountId(account.id)
+    setShowForm(true)
+  }
+
+  // Per-account stats from the trades linked to that account.
+  const statsByAccount = useMemo(() => {
+    const map: Record<string, { totalTrades: number; totalPL: number; wins: number; losses: number; winRate: number }> = {}
+    for (const a of accounts) {
+      const accountTrades = trades.filter((t) => t.accountId === a.id)
+      const totalPL = accountTrades.reduce((sum, t) => sum + (t.profitLoss || 0), 0)
+      const { wins, losses } = getWinLossCounts(accountTrades)
+      map[a.id] = { totalTrades: accountTrades.length, totalPL, wins, losses, winRate: calculateWinRate(wins, losses) }
     }
-  }
+    return map
+  }, [accounts, trades])
 
-  // Calculate account statistics
-  const getAccountStats = (accountName: string) => {
-    const accountTrades = trades.filter(t => {
-      // This is a simplification - in real app, trades would have account_id
-      return true
-    })
-    
-    const totalPL = accountTrades.reduce((sum, t) => sum + (t.profitLoss || 0), 0)
-    const { wins, losses } = getWinLossCounts(accountTrades)
-    const winRate = calculateWinRate(wins, losses)
-
-    return {
-      totalTrades: accountTrades.length,
-      totalPL,
-      wins,
-      losses,
-      winRate,
-    }
-  }
-
-  const getTypeColor = (type: string) => {
-    switch (type) {
-      case "personal":
-        return "bg-blue-500/20 text-blue-400 border-blue-500/30"
-      case "prop_firm":
-        return "bg-purple-500/20 text-purple-400 border-purple-500/30"
-      case "demo":
-        return "bg-gray-500/20 text-gray-400 border-gray-500/30"
-      default:
-        return "bg-gray-500/20 text-gray-400 border-gray-500/30"
-    }
-  }
-
-  const getTypeLabel = (type: string) => {
-    switch (type) {
-      case "personal":
-        return "Personal"
-      case "prop_firm":
-        return "Prop Firm"
-      case "demo":
-        return "Demo"
-      default:
-        return type
-    }
-  }
+  const totalDeposit = accounts.reduce((sum, a) => sum + (a.balance || 0), 0)
+  const totalPL = trades.reduce((sum, t) => sum + (t.profitLoss || 0), 0)
 
   return (
     <DashboardLayout>
-      <div className="p-4 md:p-6 lg:p-8">
-        {/* Header */}
-        <div className="mb-6 md:mb-8">
-          <div className="flex items-center justify-between">
-            <div>
-              <h1 className="text-2xl md:text-3xl font-semibold tracking-tight">Trading Accounts</h1>
-              <p className="text-sm md:text-base text-muted-foreground mt-1">
-                Manage and track all your trading accounts
-              </p>
-            </div>
-            <Button 
+      <Page>
+        <PageHeader
+          title="Accounts"
+          description="Your trading accounts, their deposits and performance"
+          actions={
+            <Button
+              size="sm"
               onClick={() => {
                 setEditingAccountId(null)
+                setFormData(EMPTY_FORM)
                 setShowForm(true)
               }}
-              className="gap-2"
             >
-              <Plus className="w-4 h-4" />
-              <span className="hidden sm:inline">New Account</span>
+              <Plus /> New account
             </Button>
-          </div>
+          }
+        />
+
+        <div className="mb-4 grid grid-cols-2 gap-3 md:mb-6 md:gap-4 xl:grid-cols-4">
+          <StatCard label="Accounts" value={accounts.length} icon={Wallet} />
+          <StatCard label="Total deposits" value={formatMoney(totalDeposit)} icon={Wallet} />
+          <StatCard label="Current balance" value={formatMoney(totalDeposit + totalPL)} icon={BookOpen} sub={`${trades.length} trades`} />
+          <StatCard
+            label="Total P&L"
+            value={formatMoney(totalPL, { sign: true })}
+            tone={pnlTone(totalPL)}
+            icon={totalPL >= 0 ? TrendingUp : TrendingDown}
+          />
         </div>
 
-        {/* Summary Stats */}
-        <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-8">
-          <div className="bg-card border border-border rounded-lg p-4">
-            <p className="text-xs text-muted-foreground mb-1">Total Accounts</p>
-            <p className="text-2xl font-semibold">{accounts.length}</p>
-          </div>
-          <div className="bg-card border border-border rounded-lg p-4">
-            <p className="text-xs text-muted-foreground mb-1">Total Balance</p>
-            <p className="text-2xl font-semibold">
-              ${accounts.reduce((sum, a) => sum + a.balance, 0).toLocaleString("en-US", { maximumFractionDigits: 0 })}
-            </p>
-          </div>
-          <div className="bg-card border border-border rounded-lg p-4">
-            <p className="text-xs text-muted-foreground mb-1">All Trades</p>
-            <p className="text-2xl font-semibold">{trades.length}</p>
-          </div>
-          <div className="bg-card border border-border rounded-lg p-4">
-            <p className="text-xs text-muted-foreground mb-1">Total P&L</p>
-            <p className={`text-2xl font-semibold ${trades.reduce((sum, t) => sum + (t.profitLoss || 0), 0) > 0 ? "text-green-400" : "text-red-400"}`}>
-              ${trades.reduce((sum, t) => sum + (t.profitLoss || 0), 0) > 0 ? "+" : ""}{(trades.reduce((sum, t) => sum + (t.profitLoss || 0), 0)).toFixed(0)}
-            </p>
-          </div>
-        </div>
-
-        {/* Accounts Grid */}
         {accounts.length > 0 ? (
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+          <div className="grid grid-cols-1 gap-4 md:gap-6 lg:grid-cols-2">
             {accounts.map((account) => {
-              const stats = getAccountStats(account.name)
-
+              const stats = statsByAccount[account.id] || { totalTrades: 0, totalPL: 0, wins: 0, losses: 0, winRate: 0 }
+              const current = (account.balance || 0) + stats.totalPL
               return (
-                <div key={account.id} className="bg-card border border-border rounded-lg overflow-hidden">
-                  {/* Header */}
-                  <div className="p-6 border-b border-border">
-                    <div className="flex items-start justify-between mb-3">
-                      <div className="flex-1">
-                        <h3 className="text-lg font-semibold">{account.name}</h3>
-                        <p className="text-sm text-muted-foreground mt-1">{account.broker}</p>
-                      </div>
-                      <div className="flex gap-2">
-                        <button
-                          onClick={() => handleEditAccount(account.id)}
-                          className="p-2 hover:bg-background rounded transition-colors"
-                          title="Edit account"
-                        >
-                          <Edit2 className="w-4 h-4" />
-                        </button>
-                        <button
-                          onClick={() => {
-                            if (confirm("Delete this account?")) {
-                              deleteAccount(account.id)
-                            }
-                          }}
-                          className="p-2 hover:bg-background rounded transition-colors text-red-400 hover:text-red-500"
-                          title="Delete account"
-                        >
-                          <Trash2 className="w-4 h-4" />
-                        </button>
-                      </div>
-                    </div>
-
-                    {/* Account Type Badge */}
-                    <div className="flex gap-2 items-center">
-                      <span className={`px-2.5 py-1 rounded text-xs font-medium border ${getTypeColor(account.type)}`}>
-                        {getTypeLabel(account.type)}
+                <Panel key={account.id} className="overflow-hidden">
+                  <div className="flex items-start justify-between gap-3 p-5">
+                    <div className="flex min-w-0 items-center gap-3">
+                      <span className="flex size-10 shrink-0 items-center justify-center rounded-lg bg-brand-soft text-brand">
+                        <Wallet className="size-5" />
                       </span>
+                      <div className="min-w-0">
+                        <div className="flex items-center gap-2">
+                          <h3 className="truncate font-medium">{account.name}</h3>
+                          <span className={cn("rounded-md px-1.5 py-0.5 text-[11px] font-medium", TYPE_STYLE[account.type] || TYPE_STYLE.demo)}>
+                            {TYPE_LABEL[account.type] || account.type}
+                          </span>
+                        </div>
+                        <p className="truncate text-sm text-muted-foreground">{account.broker || "No broker set"}</p>
+                      </div>
+                    </div>
+                    <div className="flex shrink-0 gap-1">
+                      <Button variant="ghost" size="icon-sm" onClick={() => handleEditAccount(account)} title="Edit account">
+                        <Edit2 />
+                      </Button>
+                      <Button
+                        variant="ghost"
+                        size="icon-sm"
+                        className="text-muted-foreground hover:text-loss"
+                        onClick={() => {
+                          if (confirm(`Delete the account "${account.name}"?`)) deleteAccount(account.id)
+                        }}
+                        title="Delete account"
+                      >
+                        <Trash2 />
+                      </Button>
                     </div>
                   </div>
 
-                  {/* Balance Section */}
-                  <div className="p-6 bg-background/50 border-b border-border">
-                    <div className="flex items-center gap-3">
-                      <DollarSign className="w-5 h-5 text-emerald-500" />
-                      <div>
-                        <p className="text-xs text-muted-foreground">Account Balance</p>
-                        <p className="text-2xl font-semibold">
-                          ${account.balance.toLocaleString("en-US", { maximumFractionDigits: 0 })}
-                        </p>
-                      </div>
+                  <div className="grid grid-cols-3 border-t border-border">
+                    <div className="p-5">
+                      <p className="text-xs text-muted-foreground">Deposit</p>
+                      <p className="mt-1 font-mono text-lg font-semibold tabular">{formatMoney(account.balance)}</p>
+                    </div>
+                    <div className="border-l border-border p-5">
+                      <p className="text-xs text-muted-foreground">P&L</p>
+                      <p className={cn("mt-1 font-mono text-lg font-semibold tabular", stats.totalPL > 0 ? "text-profit" : stats.totalPL < 0 ? "text-loss" : "")}>
+                        {formatMoney(stats.totalPL, { sign: true })}
+                      </p>
+                    </div>
+                    <div className="border-l border-border p-5">
+                      <p className="text-xs text-muted-foreground">Balance</p>
+                      <p className="mt-1 font-mono text-lg font-semibold tabular">{formatMoney(current)}</p>
                     </div>
                   </div>
 
-                  {/* Stats */}
-                  <div className="p-6 space-y-3">
-                    <div className="grid grid-cols-2 gap-4 mb-4">
-                      <div className="p-3 bg-background/50 rounded">
-                        <p className="text-xs text-muted-foreground mb-1">Total Trades</p>
-                        <p className="text-xl font-semibold">{stats.totalTrades}</p>
-                      </div>
-                      <div className="p-3 bg-background/50 rounded">
-                        <p className="text-xs text-muted-foreground mb-1">Win Rate</p>
-                        <p className={`text-xl font-semibold ${stats.winRate >= 50 ? "text-green-400" : "text-red-400"}`}>
-                          {stats.winRate.toFixed(1)}%
-                        </p>
-                      </div>
-                    </div>
-
-                    <div className="space-y-2 text-sm">
-                      <div className="flex items-center justify-between">
-                        <span className="text-muted-foreground">Wins / Losses</span>
-                        <span className="font-mono font-semibold">
-                          {stats.wins} / {stats.losses}
-                        </span>
-                      </div>
-                      <div className="flex items-center justify-between">
-                        <span className="text-muted-foreground">Total P&L</span>
-                        <span className={`font-mono font-semibold ${stats.totalPL > 0 ? "text-green-400" : "text-red-400"}`}>
-                          {stats.totalPL > 0 ? "+" : ""}{stats.totalPL.toFixed(0)}
-                        </span>
-                      </div>
-                    </div>
-
-                    {/* Status Indicator */}
-                    <div className="pt-3 border-t border-border flex items-center gap-2">
-                      <div className="w-2 h-2 bg-green-500 rounded-full" />
-                      <p className="text-xs text-muted-foreground">Last updated: {account.lastUpdated}</p>
-                    </div>
+                  <div className="flex flex-wrap items-center gap-x-6 gap-y-2 border-t border-border bg-background/40 px-5 py-3 text-sm">
+                    <span className="flex items-center gap-1.5 text-muted-foreground">
+                      <BookOpen className="size-4" />
+                      <span className="tabular text-foreground">{stats.totalTrades}</span> trades
+                    </span>
+                    <span className="flex items-center gap-1.5 text-muted-foreground">
+                      <Target className="size-4" />
+                      <span className={cn("tabular", stats.winRate >= 50 ? "text-profit" : stats.totalTrades ? "text-loss" : "text-foreground")}>
+                        {stats.winRate.toFixed(1)}%
+                      </span>{" "}
+                      win rate
+                    </span>
+                    <span className="text-muted-foreground">
+                      <span className="tabular text-foreground">{stats.wins}</span>W / <span className="tabular text-foreground">{stats.losses}</span>L
+                    </span>
                   </div>
-                </div>
+                </Panel>
               )
             })}
           </div>
         ) : (
-          <div className="bg-card border border-border rounded-lg p-12 text-center">
-            <TrendingUp className="w-12 h-12 text-muted-foreground mx-auto mb-4" />
-            <p className="text-muted-foreground mb-4">No accounts yet</p>
-            <Button
-              onClick={() => setShowForm(true)}
-              className="gap-2"
-            >
-              <Plus className="w-4 h-4" />
-              Add Your First Account
-            </Button>
-          </div>
+          <Panel>
+            <EmptyState
+              icon={Wallet}
+              title="No accounts yet"
+              description="Add a trading account to track its deposit, balance and performance."
+              action={
+                <Button size="sm" onClick={() => setShowForm(true)}>
+                  <Plus /> Add your first account
+                </Button>
+              }
+            />
+          </Panel>
         )}
 
-        {/* Account Form Modal */}
-        {showForm && (
-          <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-            <div className="bg-card border border-border rounded-lg max-w-2xl w-full">
-              <div className="p-6 border-b border-border">
-                <h2 className="text-xl font-semibold">
-                  {editingAccountId ? "Edit Account" : "New Account"}
-                </h2>
+        <Dialog open={showForm} onOpenChange={(o) => !o && resetForm()}>
+          <DialogContent className="sm:max-w-lg">
+            <form onSubmit={handleSubmit} className="space-y-5">
+              <DialogHeader>
+                <DialogTitle>{editingAccountId ? "Edit account" : "New account"}</DialogTitle>
+                <DialogDescription>The starting balance is your deposit; trade P&L is added on top.</DialogDescription>
+              </DialogHeader>
+
+              <div className="space-y-1.5">
+                <Label htmlFor="acc-name">Account name</Label>
+                <Input
+                  id="acc-name"
+                  value={formData.name}
+                  onChange={(e) => setFormData((prev) => ({ ...prev, name: e.target.value }))}
+                  placeholder="e.g. Main trading account"
+                  required
+                />
               </div>
 
-              <form onSubmit={handleSubmit} className="p-6 space-y-6">
-                <div>
-                  <label className="text-sm font-medium">Account Name</label>
+              <div className="grid grid-cols-2 gap-4">
+                <div className="space-y-1.5">
+                  <Label>Account type</Label>
+                  <Select value={formData.type} onValueChange={(v) => setFormData((prev) => ({ ...prev, type: v as AccountFormData["type"] }))}>
+                    <SelectTrigger className="w-full">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="personal">Personal</SelectItem>
+                      <SelectItem value="prop_firm">Prop firm</SelectItem>
+                      <SelectItem value="demo">Demo</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="space-y-1.5">
+                  <Label htmlFor="acc-broker">Broker</Label>
                   <Input
-                    value={formData.name}
-                    onChange={(e) => setFormData(prev => ({ ...prev, name: e.target.value }))}
-                    placeholder="e.g., Main Trading Account"
-                    className="mt-2"
-                    required
+                    id="acc-broker"
+                    value={formData.broker}
+                    onChange={(e) => setFormData((prev) => ({ ...prev, broker: e.target.value }))}
+                    placeholder="e.g. Exness"
                   />
                 </div>
+              </div>
 
-                <div className="grid grid-cols-2 gap-4">
-                  <div>
-                    <label className="text-sm font-medium">Account Type</label>
-                    <select
-                      value={formData.type}
-                      onChange={(e) => setFormData(prev => ({ ...prev, type: e.target.value as any }))}
-                      className="w-full mt-2 px-3 py-2 rounded-md border border-input bg-background text-sm"
-                    >
-                      <option value="personal">Personal</option>
-                      <option value="prop_firm">Prop Firm</option>
-                      <option value="demo">Demo</option>
-                    </select>
-                  </div>
+              <div className="space-y-1.5">
+                <Label htmlFor="acc-balance">Starting balance</Label>
+                <Input
+                  id="acc-balance"
+                  type="number"
+                  step="any"
+                  className="font-mono"
+                  value={Number.isFinite(formData.balance) ? formData.balance : ""}
+                  onChange={(e) => setFormData((prev) => ({ ...prev, balance: parseFloat(e.target.value) }))}
+                  placeholder="10000"
+                  required
+                />
+              </div>
 
-                  <div>
-                    <label className="text-sm font-medium">Broker</label>
-                    <Input
-                      value={formData.broker}
-                      onChange={(e) => setFormData(prev => ({ ...prev, broker: e.target.value }))}
-                      placeholder="e.g., Interactive Brokers"
-                      className="mt-2"
-                    />
-                  </div>
-                </div>
-
-                <div>
-                  <label className="text-sm font-medium">Starting Balance</label>
-                  <Input
-                    type="number"
-                    step="1"
-                    value={formData.balance}
-                    onChange={(e) => setFormData(prev => ({ ...prev, balance: parseFloat(e.target.value) }))}
-                    placeholder="10000"
-                    className="mt-2"
-                    required
-                  />
-                </div>
-
-                <div className="flex gap-3 pt-4 border-t border-border">
-                  <Button
-                    type="button"
-                    variant="outline"
-                    onClick={resetForm}
-                  >
-                    Cancel
-                  </Button>
-                  <Button
-                    type="submit"
-                    className="flex-1"
-                  >
-                    {editingAccountId ? "Update Account" : "Create Account"}
-                  </Button>
-                </div>
-              </form>
-            </div>
-          </div>
-        )}
-      </div>
+              <DialogFooter>
+                <Button type="button" variant="outline" onClick={resetForm}>
+                  Cancel
+                </Button>
+                <Button type="submit">{editingAccountId ? "Save changes" : "Create account"}</Button>
+              </DialogFooter>
+            </form>
+          </DialogContent>
+        </Dialog>
+      </Page>
     </DashboardLayout>
   )
 }

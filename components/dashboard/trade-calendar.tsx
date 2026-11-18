@@ -5,14 +5,26 @@ import { useDashboard, Trade } from "@/context/dashboard-context"
 import { Calendar } from "@/components/ui/calendar"
 import { cn } from "@/lib/utils"
 import { format, isSameDay, parseISO, startOfMonth, endOfMonth, isWithinInterval } from "date-fns"
-import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip"
-import { motion, AnimatePresence } from "framer-motion"
-import { TrendingUp, TrendingDown, Calendar as CalendarIcon, ArrowLeft, ArrowRight, Info, Plus, ChevronLeft, ChevronRight, LayoutGrid, CheckCircle2 } from "@/components/icons"
+import { AnimatePresence } from "framer-motion"
+import { Plus, ChevronLeft, ChevronRight, Calendar as CalendarIcon, TrendingUp, Target, BookOpen } from "@/components/icons"
 import { Button } from "@/components/ui/button"
-import { getWinLossCounts, calculateWinRate } from "@/lib/trading-metrics"
+import { getWinLossCounts, calculateWinRate, calcResult } from "@/lib/trading-metrics"
 import { TradeEntryForm } from "./trade-entry-form"
 import { TradeHeatmap } from "./trade-heatmap"
 import { ImageViewer } from "@/components/ui/image-viewer"
+import {
+    Page,
+    PageHeader,
+    Panel,
+    PanelHeader,
+    PanelBody,
+    StatCard,
+    EmptyState,
+    ResultBadge,
+    DirectionBadge,
+    formatMoney,
+    pnlTone,
+} from "@/components/kit"
 
 export function TradeCalendar() {
     const { trades } = useDashboard()
@@ -24,9 +36,9 @@ export function TradeCalendar() {
 
     // Group trades by day
     const dailyStats = React.useMemo(() => {
-        const stats: Record<string, { trades: Trade[], netPL: number, result: "win" | "loss" | "breakeven" }> = {}
+        const stats: Record<string, { trades: Trade[]; netPL: number; result: "win" | "loss" | "breakeven" }> = {}
 
-        trades.forEach(trade => {
+        trades.forEach((trade) => {
             const dateKey = format(parseISO(trade.entryTime), "yyyy-MM-dd")
             if (!stats[dateKey]) {
                 stats[dateKey] = { trades: [], netPL: 0, result: "breakeven" }
@@ -35,7 +47,7 @@ export function TradeCalendar() {
             stats[dateKey].netPL += trade.profitLoss || 0
         })
 
-        Object.keys(stats).forEach(date => {
+        Object.keys(stats).forEach((date) => {
             if (stats[date].netPL > 0.01) stats[date].result = "win"
             else if (stats[date].netPL < -0.01) stats[date].result = "loss"
             else stats[date].result = "breakeven"
@@ -44,19 +56,21 @@ export function TradeCalendar() {
         return stats
     }, [trades])
 
-    // Calculate monthly stats
+    // Monthly stats
     const monthlyStats = React.useMemo(() => {
         const start = startOfMonth(currentMonth)
         const end = endOfMonth(currentMonth)
 
-        const monthTrades = trades.filter(t => {
-            const date = parseISO(t.entryTime)
-            return isWithinInterval(date, { start, end })
-        })
+        const monthTrades = trades.filter((t) => isWithinInterval(parseISO(t.entryTime), { start, end }))
 
         const totalPL = monthTrades.reduce((sum, t) => sum + (t.profitLoss || 0), 0)
         const { wins, losses } = getWinLossCounts(monthTrades)
         const winRate = calculateWinRate(wins, losses)
+        const tradingDays = new Set(monthTrades.map((t) => format(parseISO(t.entryTime), "yyyy-MM-dd")))
+        let greenDays = 0
+        tradingDays.forEach((d) => {
+            if ((dailyStats[d]?.netPL || 0) > 0.01) greenDays++
+        })
 
         return {
             totalTrades: monthTrades.length,
@@ -64,293 +78,285 @@ export function TradeCalendar() {
             winRate,
             wins,
             losses,
+            tradingDays: tradingDays.size,
+            greenDays,
         }
-    }, [trades, currentMonth])
+    }, [trades, currentMonth, dailyStats])
 
-    // Get trades for selected day
+    // Trades for selected day
     const selectedDayTrades = React.useMemo(() => {
         if (!selectedDate) return []
         const dateKey = format(selectedDate, "yyyy-MM-dd")
         return dailyStats[dateKey]?.trades || []
     }, [selectedDate, dailyStats])
+    const selectedDayPL = selectedDayTrades.reduce((s, t) => s + (t.profitLoss || 0), 0)
 
-    const modifiers = {
-        win: (date: Date) => dailyStats[format(date, "yyyy-MM-dd")]?.result === "win",
-        loss: (date: Date) => dailyStats[format(date, "yyyy-MM-dd")]?.result === "loss",
-        trade: (date: Date) => !!dailyStats[format(date, "yyyy-MM-dd")]
-    }
-
-    // Helper to open the form with a pre‑filled entry time
+    // Open the form with a pre-filled entry time
     const handleAddTradeForDate = (date: Date) => {
-        // Create a local ISO‑like string for datetime-local input
+        // Local ISO-like string for datetime-local input
         const year = date.getFullYear()
-        const month = String(date.getMonth() + 1).padStart(2, '0')
-        const day = String(date.getDate()).padStart(2, '0')
-        const hours = String(new Date().getHours()).padStart(2, '0')
-        const minutes = String(new Date().getMinutes()).padStart(2, '0')
-        const localDateTime = `${year}-${month}-${day}T${hours}:${minutes}`
-        setPrefillEntryTime(localDateTime)
+        const month = String(date.getMonth() + 1).padStart(2, "0")
+        const day = String(date.getDate()).padStart(2, "0")
+        const hours = String(new Date().getHours()).padStart(2, "0")
+        const minutes = String(new Date().getMinutes()).padStart(2, "0")
+        setPrefillEntryTime(`${year}-${month}-${day}T${hours}:${minutes}`)
         setShowEntryForm(true)
     }
 
+    const shiftMonth = (delta: number) => {
+        const next = new Date(currentMonth)
+        next.setDate(1)
+        next.setMonth(next.getMonth() + delta)
+        setCurrentMonth(next)
+    }
+
     return (
-        <motion.div
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            className="w-full h-full bg-background overflow-hidden flex flex-col"
-        >
-            {/* Custom Header */}
-            <div className="p-3 px-6 flex items-center justify-between border-b border-border bg-card/50 backdrop-blur-sm">
-                <div className="flex items-center gap-4">
-                    <h2 className="text-xl font-bold text-foreground tracking-tight">
-                        {format(currentMonth, "MMMM yyyy")}
-                    </h2>
-                </div>
+        <Page>
+            <PageHeader
+                title="Calendar"
+                description="Your daily P&L at a glance"
+                actions={
+                    <Button size="sm" onClick={() => handleAddTradeForDate(selectedDate || new Date())}>
+                        <Plus /> Log trade
+                    </Button>
+                }
+            />
+
+            {/* Month KPIs */}
+            <div className="mb-4 grid grid-cols-2 gap-3 md:mb-6 md:gap-4 xl:grid-cols-4">
+                <StatCard
+                    label={`${format(currentMonth, "MMMM")} P&L`}
+                    value={formatMoney(monthlyStats.totalPL, { sign: true })}
+                    tone={pnlTone(monthlyStats.totalPL)}
+                    icon={TrendingUp}
+                    sub={`${monthlyStats.totalTrades} trades`}
+                />
+                <StatCard
+                    label="Win rate"
+                    value={`${monthlyStats.winRate}%`}
+                    icon={Target}
+                    sub={`${monthlyStats.wins} wins · ${monthlyStats.losses} losses`}
+                />
+                <StatCard
+                    label="Trading days"
+                    value={String(monthlyStats.tradingDays)}
+                    icon={CalendarIcon}
+                    sub={`${monthlyStats.greenDays} green · ${monthlyStats.tradingDays - monthlyStats.greenDays} red/flat`}
+                />
+                <StatCard
+                    label="Avg per trading day"
+                    value={formatMoney(monthlyStats.tradingDays ? monthlyStats.totalPL / monthlyStats.tradingDays : 0, { sign: true })}
+                    tone={pnlTone(monthlyStats.totalPL)}
+                    icon={BookOpen}
+                    sub="Net P&L ÷ days traded"
+                />
             </div>
 
-            <div className="flex-1 min-h-0 overflow-y-auto p-4 space-y-6 scrollbar-hide">
-                {/* Activity Heatmap */}
-                <TradeHeatmap />
-
-                {/* Calendar Navigation & Controls */}
-                <div className="flex items-center justify-between px-1">
-                    <Button
-                        variant="outline"
-                        size="sm"
-                        className="text-muted-foreground hover:text-foreground gap-2 h-9 border-border/50 bg-card/30 backdrop-blur-sm px-4"
-                        onClick={() => { }}
-                    >
-                        <LayoutGrid className="w-3.5 h-3.5" />
-                        <span className="text-[12px] font-bold uppercase tracking-wider">Manage Entries</span>
-                    </Button>
-
-                    <div className="flex items-center gap-1 bg-muted/30 p-1 rounded-xl border border-border/50 backdrop-blur-sm">
-                        <Button
-                            variant="ghost"
-                            size="icon"
-                            className="h-8 w-8 text-muted-foreground hover:text-foreground hover:bg-background rounded-lg transition-all"
-                            onClick={() => {
-                                const prev = new Date(currentMonth)
-                                prev.setMonth(prev.getMonth() - 1)
-                                setCurrentMonth(prev)
-                            }}
-                        >
-                            <ChevronLeft className="w-4 h-4" />
+            {/* Month grid */}
+            <Panel className="mb-4 overflow-hidden md:mb-6">
+                <div className="flex items-center justify-between gap-3 border-b border-border px-5 py-4">
+                    <h2 className="text-base font-semibold tracking-tight">{format(currentMonth, "MMMM yyyy")}</h2>
+                    <div className="flex items-center gap-1">
+                        <Button variant="outline" size="icon-sm" onClick={() => shiftMonth(-1)} aria-label="Previous month">
+                            <ChevronLeft />
                         </Button>
                         <Button
-                            variant="ghost"
+                            variant="outline"
                             size="sm"
-                            className="h-8 text-[11px] font-black uppercase tracking-widest text-muted-foreground hover:text-foreground hover:bg-background px-3 rounded-lg transition-all"
-                            onClick={() => setCurrentMonth(new Date())}
+                            onClick={() => {
+                                setCurrentMonth(new Date())
+                                setSelectedDate(new Date())
+                            }}
                         >
                             Today
                         </Button>
-                        <Button
-                            variant="ghost"
-                            size="icon"
-                            className="h-8 w-8 text-muted-foreground hover:text-foreground hover:bg-background rounded-lg transition-all"
-                            onClick={() => {
-                                const next = new Date(currentMonth)
-                                next.setMonth(next.getMonth() + 1)
-                                setCurrentMonth(next)
-                            }}
-                        >
-                            <ChevronRight className="w-4 h-4" />
+                        <Button variant="outline" size="icon-sm" onClick={() => shiftMonth(1)} aria-label="Next month">
+                            <ChevronRight />
                         </Button>
                     </div>
                 </div>
 
-                {/* Calendar Grid */}
-                <div className="border border-border rounded-xl overflow-hidden bg-muted/5 flex flex-col">
-                    <TooltipProvider>
-                        <Calendar
-                            mode="single"
-                            selected={selectedDate}
-                            onSelect={setSelectedDate}
-                            month={currentMonth}
-                            onMonthChange={setCurrentMonth}
-                            className="w-full p-0 flex-1 flex flex-col"
-                            classNames={{
-                                root: "w-full flex-1 flex flex-col",
-                                months: "w-full flex-1 flex flex-col",
-                                month: "w-full flex-1 flex flex-col",
-                                caption: "hidden",
-                                month_caption: "hidden",
-                                caption_label: "hidden",
-                                table: "w-full border-collapse flex-1 flex flex-col",
-                                head_cell: "text-muted-foreground font-semibold text-[10px] py-1.5 text-center uppercase tracking-widest",
-                                row: "grid grid-cols-7 border-b border-border last:border-0 w-full flex-1",
-                                day: "min-h-[100px] w-full p-0 relative border-r border-border last:border-r-0 focus-within:z-20",
-                                today: "bg-transparent",
-                                selected: "bg-transparent", // Remove default bright highlight
-                                day_outside: "opacity-20",
-                            }}
-                            components={{
-                                DayButton: ({ day, modifiers: dayModifiers, ...props }) => {
-                                    const { onAnimationStart, onDragStart, onDragEnd, onDrag, ...safeProps } = props as any;
-                                    const dateKey = format(day.date, "yyyy-MM-dd")
-                                    const stats = dailyStats[dateKey]
-                                    const isSelected = selectedDate && isSameDay(day.date, selectedDate)
-                                    const isOutside = dayModifiers.outside
+                <div className="overflow-x-auto">
+                    <Calendar
+                        mode="single"
+                        selected={selectedDate}
+                        onSelect={setSelectedDate}
+                        month={currentMonth}
+                        onMonthChange={setCurrentMonth}
+                        className="w-full min-w-[640px] p-0"
+                        classNames={{
+                            root: "w-full",
+                            months: "w-full",
+                            month: "w-full",
+                            nav: "hidden",
+                            month_caption: "hidden",
+                            caption_label: "hidden",
+                            month_grid: "w-full border-collapse",
+                            weekdays: "grid grid-cols-7 border-b border-border bg-secondary/40",
+                            weekday: "py-2 text-center text-xs font-medium text-muted-foreground",
+                            week: "grid grid-cols-7 border-b border-border last:border-b-0",
+                            day: "relative min-h-[96px] w-full border-r border-border p-0 last:border-r-0 focus-within:z-20",
+                            today: "bg-transparent",
+                            selected: "bg-transparent",
+                            outside: "",
+                        }}
+                        components={{
+                            DayButton: ({ day, modifiers: dayModifiers }) => {
+                                const dateKey = format(day.date, "yyyy-MM-dd")
+                                const stats = dailyStats[dateKey]
+                                const isSelected = selectedDate && isSameDay(day.date, selectedDate)
+                                const isOutside = dayModifiers.outside
+                                const isToday = isSameDay(day.date, new Date())
 
-                                    return (
-                                        <div
-                                            onClick={() => setSelectedDate(day.date)}
-                                            className={cn(
-                                                "group relative w-full h-full p-2 transition-colors hover:bg-accent/50 cursor-pointer",
-                                                isSelected && "bg-accent/30",
-                                                isOutside && "bg-muted/20"
-                                            )}
-                                        >
-                                            {/* Date Number (Top Right) */}
-                                            <div className="absolute top-2.5 right-3">
-                                                <span className={cn(
-                                                    "text-[12px] font-bold px-1.5 py-0.5 rounded-md transition-colors",
-                                                    isSameDay(day.date, new Date())
-                                                        ? "text-primary bg-primary/20 ring-1 ring-primary/30"
-                                                        : "text-foreground/40 group-hover:text-foreground"
-                                                )}>
-                                                    {day.date.getDate() === 1 ? format(day.date, "MMM d") : day.date.getDate()}
-                                                </span>
-                                            </div>
-
-                                            {/* Plus Button (Top Left on Hover) */}
+                                return (
+                                    <div
+                                        role="button"
+                                        tabIndex={0}
+                                        onClick={() => setSelectedDate(day.date)}
+                                        onKeyDown={(e) => {
+                                            if (e.key === "Enter" || e.key === " ") {
+                                                e.preventDefault()
+                                                setSelectedDate(day.date)
+                                            }
+                                        }}
+                                        className={cn(
+                                            "group relative flex h-full min-h-[96px] w-full cursor-pointer flex-col p-2 text-left transition-colors hover:bg-accent/50",
+                                            stats?.result === "win" && "bg-profit/10 hover:bg-profit/15",
+                                            stats?.result === "loss" && "bg-loss/10 hover:bg-loss/15",
+                                            isSelected && "ring-2 ring-inset ring-foreground/20",
+                                            isOutside && "opacity-40"
+                                        )}
+                                    >
+                                        <div className="flex items-start justify-between">
+                                            <span
+                                                className={cn(
+                                                    "flex h-6 min-w-6 items-center justify-center rounded-md px-1 text-xs font-medium tabular",
+                                                    isToday ? "bg-brand-soft text-brand ring-1 ring-brand" : "text-muted-foreground group-hover:text-foreground"
+                                                )}
+                                            >
+                                                {day.date.getDate() === 1 ? format(day.date, "MMM d") : day.date.getDate()}
+                                            </span>
                                             <button
                                                 onClick={(e) => {
-                                                    e.stopPropagation();
-                                                    handleAddTradeForDate(day.date);
+                                                    e.stopPropagation()
+                                                    handleAddTradeForDate(day.date)
                                                 }}
-                                                className="absolute top-2.5 left-2.5 p-1.5 rounded-lg bg-muted border border-border text-muted-foreground hover:text-foreground hover:bg-accent opacity-0 group-hover:opacity-100 transition-opacity z-10"
+                                                className="rounded-md p-1 text-muted-foreground opacity-0 transition-opacity hover:bg-accent hover:text-foreground focus:opacity-100 group-hover:opacity-100"
+                                                aria-label={`Log trade on ${format(day.date, "MMM d")}`}
+                                                title="Log trade"
                                             >
-                                                <Plus className="w-3.5 h-3.5" />
+                                                <Plus className="size-3.5" />
                                             </button>
-
-                                            {/* Trade Summary Card (Single Aggregate) */}
-                                            <div className="mt-6 px-1 pb-2">
-                                                {stats && (
-                                                    <div className={cn(
-                                                        "bg-card border rounded-md p-1.5 shadow-sm flex flex-col gap-0.5 transition-all",
-                                                        stats.result === "win" ? "border-[#10b981]/30 bg-[#10b981]/5" :
-                                                            stats.result === "loss" ? "border-red-500/30 bg-red-500/5" :
-                                                                "border-border bg-muted/30"
-                                                    )}>
-                                                        <div className="flex items-center justify-between">
-                                                            <span className={cn(
-                                                                "text-sm font-black",
-                                                                stats.netPL > 0 ? "text-[#10b981]" : stats.netPL < 0 ? "text-red-500" : "text-muted-foreground"
-                                                            )}>
-                                                                {stats.netPL >= 0 ? "+" : "-"}${Math.abs(stats.netPL).toLocaleString()}
-                                                            </span>
-                                                        </div>
-                                                        <div className="flex items-center justify-between">
-                                                            <span className="text-[9px] text-muted-foreground uppercase font-black tracking-tight">
-                                                                {stats.trades.length} {stats.trades.length === 1 ? "TRADE" : "TRADES"}
-                                                            </span>
-                                                        </div>
-                                                    </div>
-                                                )}
-                                            </div>
-                                        </div>
-                                    )
-                                }
-                            }}
-                        />
-                    </TooltipProvider>
-                </div>
-
-                {/* Daily Details Section */}
-                <div className="border-t border-border bg-muted/10 p-4">
-                    <div className="flex items-center justify-between mb-4">
-                        <div className="flex items-center gap-2">
-                            <h3 className="text-sm font-semibold text-foreground">
-                                {selectedDate ? format(selectedDate, "EEEE, MMMM do") : "Select a day"}
-                            </h3>
-                            <span className="text-[10px] bg-primary/10 text-primary px-2 py-0.5 rounded-full uppercase font-bold tracking-tight">
-                                Daily Activity
-                            </span>
-                        </div>
-                        <div className="text-[11px] text-white/40">
-                            {selectedDayTrades.length} {selectedDayTrades.length === 1 ? "Trade" : "Trades"} recorded
-                        </div>
-                    </div>
-
-                    <div className="space-y-3">
-                        {selectedDayTrades.length > 0 ? (
-                            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                                {selectedDayTrades.map((trade) => (
-                                    <div
-                                        key={trade.id}
-                                        className="bg-card border border-border rounded-xl p-4 hover:border-primary/50 transition-colors"
-                                    >
-                                        <div className="flex items-center justify-between mb-3">
-                                            <div className="flex items-center gap-2">
-                                                <div className={cn(
-                                                    "w-2 h-2 rounded-full",
-                                                    trade.result === "win" ? "bg-[#10b981]" : "bg-red-500"
-                                                )} />
-                                                <span className="text-sm font-bold text-foreground/90 uppercase">{trade.symbol}</span>
-                                            </div>
-                                            <span className={cn(
-                                                "text-[10px] font-mono font-bold px-2 py-0.5 rounded",
-                                                (trade.profitLoss || 0) >= 0 ? "text-[#10b981] bg-[#10b981]/10" : "text-red-400 bg-red-400/10"
-                                            )}>
-                                                {(trade.profitLoss || 0) >= 0 ? "+" : ""}${trade.profitLoss?.toLocaleString()}
-                                            </span>
                                         </div>
 
-                                        <div className="grid grid-cols-2 gap-y-2 text-[11px]">
-                                            <div className="text-muted-foreground">Direction</div>
-                                            <div className={cn(
-                                                "text-right font-medium uppercase",
-                                                trade.direction === "buy" ? "text-[#10b981]" : "text-red-400"
-                                            )}>{trade.direction === "buy" ? "Long" : "Short"}</div>
-
-                                            <div className="text-muted-foreground">Lot Size</div>
-                                            <div className="text-right text-foreground/80">{trade.lotSize}</div>
-
-                                            <div className="text-muted-foreground">Strategy</div>
-                                            <div className="text-right text-foreground/80 italic">{trade.strategy || "No strategy"}</div>
-                                        </div>
-
-                                        {trade.screenshots && trade.screenshots.length > 0 && (
-                                            <div
-                                                className="mt-4 rounded-lg overflow-hidden border border-white/5 cursor-pointer"
-                                                onClick={() => setViewerImage(trade.screenshots![0])}
-                                            >
-                                                <img
-                                                    src={trade.screenshots[0]}
-                                                    alt="Full view"
-                                                    className="w-full aspect-video object-cover hover:scale-105 transition-transform"
-                                                />
+                                        {stats && (
+                                            <div className="mt-auto pt-2">
+                                                <div
+                                                    className={cn(
+                                                        "font-mono text-sm font-semibold tabular",
+                                                        stats.netPL > 0.01 ? "text-profit" : stats.netPL < -0.01 ? "text-loss" : "text-muted-foreground"
+                                                    )}
+                                                >
+                                                    {formatMoney(stats.netPL, { sign: true })}
+                                                </div>
+                                                <div className="text-xs text-muted-foreground">
+                                                    {stats.trades.length} {stats.trades.length === 1 ? "trade" : "trades"}
+                                                </div>
                                             </div>
                                         )}
                                     </div>
-                                ))}
-                            </div>
-                        ) : (
-                            <div className="text-center py-12 bg-white/[0.02] rounded-xl border border-dashed border-white/5">
-                                <p className="text-sm text-white/20 italic">No trades recorded for this date</p>
-                                <Button
-                                    variant="ghost"
-                                    size="sm"
-                                    className="mt-2 text-white/40 hover:text-white"
-                                    onClick={() => selectedDate && handleAddTradeForDate(selectedDate)}
-                                >
-                                    + Add Trade
-                                </Button>
-                            </div>
-                        )}
-                    </div>
+                                )
+                            },
+                        }}
+                    />
                 </div>
+            </Panel>
 
-            </div>
+            {/* Selected day */}
+            <Panel className="mb-4 md:mb-6">
+                <PanelHeader
+                    title={selectedDate ? format(selectedDate, "EEEE, MMMM d") : "Select a day"}
+                    description={
+                        selectedDayTrades.length
+                            ? `${selectedDayTrades.length} ${selectedDayTrades.length === 1 ? "trade" : "trades"} · ${formatMoney(selectedDayPL, { sign: true })}`
+                            : "No trades on this day"
+                    }
+                    icon={CalendarIcon}
+                    actions={
+                        selectedDate && (
+                            <Button variant="ghost" size="sm" onClick={() => handleAddTradeForDate(selectedDate)}>
+                                <Plus /> Add trade
+                            </Button>
+                        )
+                    }
+                />
+                <PanelBody>
+                    {selectedDayTrades.length > 0 ? (
+                        <div className="grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-3">
+                            {selectedDayTrades.map((trade) => (
+                                <div key={trade.id} className="rounded-lg border border-border bg-background/40 p-4 transition-colors hover:border-foreground/20">
+                                    <div className="mb-3 flex items-center justify-between gap-2">
+                                        <div className="flex min-w-0 items-center gap-2">
+                                            <span className="truncate text-sm font-semibold">{trade.symbol}</span>
+                                            <DirectionBadge direction={trade.direction} />
+                                            <ResultBadge result={trade.tradeStatus === "open" ? "" : calcResult(trade)} />
+                                        </div>
+                                        <span
+                                            className={cn(
+                                                "font-mono text-sm font-semibold tabular",
+                                                (trade.profitLoss || 0) > 0 ? "text-profit" : (trade.profitLoss || 0) < 0 ? "text-loss" : "text-muted-foreground"
+                                            )}
+                                        >
+                                            {formatMoney(trade.profitLoss, { sign: true })}
+                                        </span>
+                                    </div>
 
-            {/* Image Viewer */}
-            {viewerImage && (
-                <ImageViewer src={viewerImage} onClose={() => setViewerImage(null)} />
-            )}
+                                    <dl className="grid grid-cols-2 gap-y-1.5 text-xs">
+                                        <dt className="text-muted-foreground">Time</dt>
+                                        <dd className="text-right font-mono tabular">{format(parseISO(trade.entryTime), "HH:mm")}</dd>
+                                        <dt className="text-muted-foreground">Lot size</dt>
+                                        <dd className="text-right font-mono tabular">{trade.lotSize}</dd>
+                                        <dt className="text-muted-foreground">Strategy</dt>
+                                        <dd className="truncate text-right">{trade.strategy || "—"}</dd>
+                                    </dl>
 
-            {/* Entry Form Modal */}
+                                    {trade.screenshots && trade.screenshots.length > 0 && (
+                                        <button
+                                            className="mt-3 block w-full overflow-hidden rounded-md border border-border"
+                                            onClick={() => setViewerImage(trade.screenshots![0])}
+                                        >
+                                            <img
+                                                src={trade.screenshots[0]}
+                                                alt={`${trade.symbol} screenshot`}
+                                                className="aspect-video w-full object-cover transition-transform hover:scale-105"
+                                            />
+                                        </button>
+                                    )}
+                                </div>
+                            ))}
+                        </div>
+                    ) : (
+                        <EmptyState
+                            icon={CalendarIcon}
+                            title="No trades recorded for this date"
+                            description="Pick another day or log a trade for this one."
+                            action={
+                                selectedDate && (
+                                    <Button size="sm" variant="outline" onClick={() => handleAddTradeForDate(selectedDate)}>
+                                        <Plus /> Add trade
+                                    </Button>
+                                )
+                            }
+                        />
+                    )}
+                </PanelBody>
+            </Panel>
+
+            {/* Year heatmap */}
+            <TradeHeatmap />
+
+            {viewerImage && <ImageViewer src={viewerImage} onClose={() => setViewerImage(null)} />}
+
             <AnimatePresence>
                 {showEntryForm && (
                     <TradeEntryForm
@@ -358,10 +364,10 @@ export function TradeCalendar() {
                             setShowEntryForm(false)
                             setPrefillEntryTime(undefined)
                         }}
-                        defaultEntryTime={prefillEntryTime} // new prop
+                        defaultEntryTime={prefillEntryTime}
                     />
                 )}
             </AnimatePresence>
-        </motion.div>
+        </Page>
     )
 }

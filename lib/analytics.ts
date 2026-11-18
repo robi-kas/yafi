@@ -57,6 +57,10 @@ function getRMultiple(trade: Trade): number | null {
   return trade.profitLoss / riskAmount
 }
 
+function sumR(subset: Trade[]): number {
+  return subset.reduce((s, t) => s + (getRMultiple(t) ?? 0), 0)
+}
+
 function getDayName(dateStr: string): string {
   try {
     const d = new Date(dateStr)
@@ -138,7 +142,7 @@ export function getPerformanceBySymbol(trades: Trade[]): SymbolStat[] {
       winRate: calculateWinRate(wins, losses),
       netPnl,
       profitFactor: calculateProfitFactor(symTrades),
-      netR: netPnl,
+      netR: sumR(symTrades),
     })
   }
   return results.sort((a, b) => b.netPnl - a.netPnl)
@@ -441,7 +445,7 @@ export function getMonthlyPerformance(trades: Trade[]): MonthlyStat[] {
       trades: subset.length,
       winRate: calculateWinRate(wins, losses),
       netPnl: subset.reduce((s, t) => s + (t.profitLoss || 0), 0),
-      netR: subset.reduce((s, t) => s + (t.profitLoss || 0), 0),
+      netR: sumR(subset),
     })
   }
   return results.sort((a, b) => a.month.localeCompare(b.month))
@@ -662,6 +666,6 @@ export function getAllMetrics(trades: Trade[]): {
     avgWin: calculateAvgWin(trades),
     avgLoss: calculateAvgLoss(trades),
     avgRR: calculateAvgRR(trades),
-    netR: totalPnl,
+    netR: calculateNetR(trades),
   }
 }

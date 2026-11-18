@@ -1,6 +1,6 @@
 "use client"
 
-import { useMemo, useState } from "react"
+import React, { useMemo, useState } from "react"
 import { DashboardLayout } from "@/components/dashboard/dashboard-layout"
 import { useDashboard } from "@/context/dashboard-context"
 import { EquityCurveChart } from "@/components/dashboard/trading-charts"
@@ -14,85 +14,69 @@ import {
 import {
   TrendingUp, TrendingDown, Target, Zap, AlertTriangle, Info,
   BarChart3, Activity, Brain, Calendar, DollarSign, LineChart,
-  Sun, Star, Flame, ArrowUpRight, ArrowDownRight,
+  Sun, Star, Flame, ChevronDown, Trophy,
 } from "@/components/icons"
+import type { IconComponent } from "@/components/icons"
 import {
-  BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer,
+  BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid,
   Line, AreaChart, Area, Cell, ComposedChart,
 } from "recharts"
+import { Page, PageHeader, Panel, PanelHeader, PanelBody, StatCard, EmptyState, formatMoney, pnlTone } from "@/components/kit"
+import { cn } from "@/lib/utils"
 
-/* ─── Styled sub-components ─── */
+/* ─── Small building blocks ─── */
 
-function KpiCard({ label, value, sub, positive }: {
-  label: string; value: string; sub?: string; positive?: boolean | null
-}) {
-  const color = positive === null ? "" : positive ? "text-emerald-400" : "text-rose-400"
+type Tone = "profit" | "loss" | "default"
+const toneClass = (t: Tone) => (t === "profit" ? "text-profit" : t === "loss" ? "text-loss" : "text-foreground")
+const signTone = (n: number): Tone => (n > 0 ? "profit" : n < 0 ? "loss" : "default")
+
+/** Compact metric tile used inside panels. */
+function Tile({ label, value, sub, tone = "default" }: { label: string; value: string; sub?: string; tone?: Tone }) {
   return (
-    <div className="p-4 bg-zinc-900/60 border border-zinc-800 rounded-xl">
-      <p className="text-[11px] font-medium text-zinc-500 uppercase tracking-wider mb-1">{label}</p>
-      <p className={`text-xl font-semibold tracking-tight ${color || "text-zinc-100"}`}>{value}</p>
-      {sub && <p className="text-[11px] text-zinc-600 mt-0.5">{sub}</p>}
+    <div className="min-w-0 rounded-lg border border-border bg-background/40 p-3">
+      <p className="truncate text-xs text-muted-foreground">{label}</p>
+      <p className={cn("mt-1 truncate font-mono text-base font-semibold tabular", toneClass(tone))}>{value}</p>
+      {sub && <p className="mt-0.5 truncate text-xs text-muted-foreground">{sub}</p>}
     </div>
   )
 }
 
-function CardShell({ children, className = "", title, icon, action }: {
-  children: React.ReactNode; className?: string; title?: string; icon?: React.ReactNode; action?: React.ReactNode
-}) {
+function InsightCard({ type, title, description }: { type: "positive" | "negative" | "neutral"; title: string; description: string }) {
+  const style = {
+    positive: "border-profit/20 bg-profit/5 text-profit",
+    negative: "border-loss/20 bg-loss/5 text-loss",
+    neutral: "border-border bg-secondary/40 text-foreground",
+  }[type]
   return (
-    <div className={`bg-zinc-900/60 border border-zinc-800 rounded-xl overflow-hidden ${className}`}>
-      {(title || action) && (
-        <div className="flex items-center justify-between px-5 pt-4 pb-2">
-          {title && (
-            <div className="flex items-center gap-2">
-              {icon && <span className="text-zinc-400">{icon}</span>}
-              <h3 className="text-sm font-semibold text-zinc-100">{title}</h3>
-            </div>
-          )}
-          {action && <div>{action}</div>}
-        </div>
-      )}
-      <div className="p-5">{children}</div>
+    <div className={cn("rounded-xl border p-4", style)}>
+      <p className="text-sm font-medium">{title}</p>
+      <p className="mt-1 text-xs leading-relaxed text-muted-foreground">{description}</p>
     </div>
   )
 }
 
-function InsightBadge({ type, title, description }: {
-  type: "positive" | "negative" | "neutral"; title: string; description: string
-}) {
-  const colors = {
-    positive: "bg-emerald-500/8 border-emerald-500/15 text-emerald-400",
-    negative: "bg-rose-500/8 border-rose-500/15 text-rose-400",
-    neutral: "bg-violet-500/8 border-violet-500/15 text-violet-400",
-  }
-  return (
-    <div className={`p-3 rounded-xl border ${colors[type]}`}>
-      <p className="text-xs font-semibold mb-0.5">{title}</p>
-      <p className="text-[11px] text-zinc-500 leading-relaxed">{description}</p>
-    </div>
-  )
+function NoData({ title = "Not enough data yet", description }: { title?: string; description: string }) {
+  return <EmptyState icon={Info} title={title} description={description} className="py-10" />
 }
 
-function EmptyState({ message }: { message: string }) {
-  return (
-    <div className="flex flex-col items-center justify-center py-10 text-zinc-600">
-      <Info className="w-6 h-6 mb-2 opacity-40" />
-      <p className="text-xs">{message}</p>
-    </div>
-  )
-}
+const NEEDS_TRADES = "Log or import a few closed trades and this breakdown fills in automatically."
+const NEEDS_JOURNAL = "Fill in the journal fields (session, HTF bias, entry model, emotions) when logging trades to unlock this."
+
+type Cell =
+  | string
+  | { value: string; tone?: Tone; mono?: boolean }
 
 function DataTable({ headers, rows }: {
   headers: { key: string; label: string; align?: "left" | "right" }[]
-  rows: { key: string; cells: (string | { value: string; color?: string; mono?: boolean })[] }[]
+  rows: { key: string; cells: Cell[] }[]
 }) {
   return (
-    <div className="overflow-x-auto -mx-5 -mb-5">
-      <table className="w-full text-[11px]">
+    <div className="-mx-5 overflow-x-auto">
+      <table className="w-full text-xs">
         <thead>
-          <tr className="border-b border-zinc-800">
+          <tr className="border-b border-border">
             {headers.map(h => (
-              <th key={h.key} className={`py-2.5 px-4 font-medium text-zinc-500 ${h.align === "right" ? "text-right" : "text-left"}`}>
+              <th key={h.key} className={cn("px-5 py-2 font-medium text-muted-foreground", h.align === "right" ? "text-right" : "text-left")}>
                 {h.label}
               </th>
             ))}
@@ -100,13 +84,21 @@ function DataTable({ headers, rows }: {
         </thead>
         <tbody>
           {rows.map(r => (
-            <tr key={r.key} className="border-b border-zinc-800/50 hover:bg-zinc-800/20 transition-colors">
+            <tr key={r.key} className="border-b border-border/60 transition-colors last:border-0 hover:bg-accent/40">
               {r.cells.map((c, i) => {
                 const val = typeof c === "string" ? c : c.value
-                const color = typeof c === "string" ? "" : c.color || ""
-                const mono = typeof c === "string" ? false : c.mono || false
+                const tone = typeof c === "string" ? undefined : c.tone
+                const mono = typeof c === "string" ? false : !!c.mono
                 return (
-                  <td key={i} className={`py-2.5 px-4 ${headers[i]?.align === "right" ? "text-right" : "text-left"} ${color} ${mono ? "font-mono tracking-tight" : ""}`}>
+                  <td
+                    key={i}
+                    className={cn(
+                      "px-5 py-2.5",
+                      headers[i]?.align === "right" ? "text-right" : "text-left",
+                      tone && toneClass(tone),
+                      (mono || headers[i]?.align === "right") && "font-mono tabular"
+                    )}
+                  >
                     {val}
                   </td>
                 )
@@ -122,11 +114,11 @@ function DataTable({ headers, rows }: {
 function ChartTooltip({ active, payload, label, formatter }: any) {
   if (!active || !payload?.length) return null
   return (
-    <div className="bg-zinc-900 border border-zinc-700 rounded-xl px-4 py-3 shadow-xl backdrop-blur-sm text-xs">
-      <p className="text-zinc-400 font-medium mb-1.5">{label}</p>
+    <div className="rounded-lg border border-border bg-popover px-3 py-2 text-xs shadow-xl">
+      {label !== undefined && <p className="mb-1 font-medium">{label}</p>}
       {payload.map((p: any, i: number) => (
-        <p key={i} className="text-zinc-100 font-mono">
-          <span className="text-zinc-500 mr-2">{p.name}:</span>
+        <p key={i} className="font-mono tabular">
+          <span className="mr-2 font-sans text-muted-foreground">{LABELS[p.name] || p.name}</span>
           {formatter ? formatter(p.value, p.name) : p.value}
         </p>
       ))}
@@ -134,38 +126,50 @@ function ChartTooltip({ active, payload, label, formatter }: any) {
   )
 }
 
-/* ─── Chart defaults ─── */
-const CHART_PROPS = { stroke: "var(--border)", strokeDasharray: "" }
-const AXIS_PROPS = { stroke: "var(--muted-foreground)", fontSize: 10, tickLine: false, axisLine: false }
-
-/* ─── Section config ─── */
-interface SectionDef {
-  id: string; title: string; icon: React.ReactNode; cols: 1 | 2 | "full"
+const LABELS: Record<string, string> = {
+  count: "Trades", netPnl: "Net P&L", wins: "Wins", losses: "Losses", breakevens: "Breakeven",
+  winRate: "Win rate", drawdown: "Drawdown",
 }
 
+/* ─── Chart defaults ─── */
+const AXIS_PROPS = { stroke: "var(--muted-foreground)", fontSize: 11, tickLine: false, axisLine: false }
+const GRID = <CartesianGrid vertical={false} stroke="var(--border)" />
+const GRID_H = <CartesianGrid horizontal={false} stroke="var(--border)" />
+const CURSOR = { fill: "var(--accent)", fillOpacity: 0.5 }
+const money = (v: number) => formatMoney(v, { sign: true })
+const pct = (v: number) => `${Number(v).toFixed(1)}%`
+const pf = (v: number) => (v === Infinity ? "∞" : v.toFixed(2))
+const monthLabel = (key: string) => {
+  const [y, mo] = key.split("-").map(Number)
+  if (!y || !mo) return key
+  return new Date(Date.UTC(y, mo - 1, 1)).toLocaleDateString(undefined, { month: "short", year: "numeric", timeZone: "UTC" })
+}
+
+/* ─── Section config ─── */
+interface SectionDef { id: string; title: string; description: string; icon: IconComponent; cols: 1 | 2 | 3 }
+
 const SECTIONS: SectionDef[] = [
-  { id: "r-multiple", title: "R Multiple Distribution", icon: <Target className="w-3.5 h-3.5" />, cols: 2 },
-  { id: "symbols", title: "Symbol Performance", icon: <BarChart3 className="w-3.5 h-3.5" />, cols: 2 },
-  { id: "day-distribution", title: "Trade Distribution by Day", icon: <Calendar className="w-3.5 h-3.5" />, cols: 1 },
-  { id: "weekday", title: "Weekday Performance", icon: <Activity className="w-3.5 h-3.5" />, cols: 1 },
-  { id: "session", title: "Session Performance", icon: <Sun className="w-3.5 h-3.5" />, cols: 1 },
-  { id: "htf-bias", title: "HTF Bias Accuracy", icon: <TrendingUp className="w-3.5 h-3.5" />, cols: 1 },
-  { id: "entry-models", title: "Entry Model Performance", icon: <Zap className="w-3.5 h-3.5" />, cols: 2 },
-  { id: "setup-score", title: "Setup Score vs Win Rate", icon: <Star className="w-3.5 h-3.5" />, cols: 1 },
-  { id: "mistakes", title: "Mistake Analysis", icon: <Flame className="w-3.5 h-3.5" />, cols: 1 },
-  { id: "emotional", title: "Emotional Analytics", icon: <Brain className="w-3.5 h-3.5" />, cols: 1 },
-  { id: "monthly", title: "Monthly Performance", icon: <LineChart className="w-3.5 h-3.5" />, cols: 2 },
-  { id: "equity", title: "Equity & Drawdown", icon: <TrendingUp className="w-3.5 h-3.5" />, cols: 2 },
-  { id: "expectancy", title: "Expectancy", icon: <Target className="w-3.5 h-3.5" />, cols: 1 },
-  { id: "risk-management", title: "Risk Management", icon: <DollarSign className="w-3.5 h-3.5" />, cols: 1 },
+  { id: "r-multiple", title: "R-multiple distribution", description: "How many trades landed in each R bucket", icon: Target, cols: 2 },
+  { id: "expectancy", title: "Expectancy", description: "What an average trade is worth", icon: Trophy, cols: 1 },
+  { id: "symbols", title: "Symbol performance", description: "Net P&L by instrument", icon: BarChart3, cols: 2 },
+  { id: "risk-management", title: "Risk management", description: "Risk taken versus reward achieved", icon: DollarSign, cols: 1 },
+  { id: "equity", title: "Equity & drawdown", description: "Balance and distance from peak", icon: TrendingUp, cols: 2 },
+  { id: "day-distribution", title: "Results by day", description: "Wins, losses and breakevens per weekday", icon: Calendar, cols: 1 },
+  { id: "monthly", title: "Monthly performance", description: "Net P&L bars with win-rate line", icon: LineChart, cols: 2 },
+  { id: "weekday", title: "Weekday performance", description: "Which days pay and which cost", icon: Activity, cols: 1 },
+  { id: "entry-models", title: "Entry model performance", description: "Win rate by entry model", icon: Zap, cols: 2 },
+  { id: "session", title: "Session performance", description: "Win rate by trading session", icon: Sun, cols: 1 },
+  { id: "htf-bias", title: "HTF bias accuracy", description: "Results when trading with each bias", icon: TrendingUp, cols: 1 },
+  { id: "setup-score", title: "Setup score vs win rate", description: "Do higher-quality setups win more?", icon: Star, cols: 1 },
+  { id: "mistakes", title: "Mistake analysis", description: "What your mistakes cost you", icon: Flame, cols: 1 },
+  { id: "emotional", title: "Emotional analytics", description: "Results by emotional state", icon: Brain, cols: 3 },
 ]
 
 /* ─── Main component ─── */
 function AnalyticsInner() {
   const { trades, performanceMetrics } = useDashboard()
-  const [open, setOpen] = useState<Set<string>>(new Set(SECTIONS.map(s => s.id)))
-
-  const toggle = (id: string) => setOpen(p => { const n = new Set(p); n.has(id) ? n.delete(id) : n.add(id); return n })
+  const [collapsed, setCollapsed] = useState<Set<string>>(new Set())
+  const toggle = (id: string) => setCollapsed(p => { const n = new Set(p); n.has(id) ? n.delete(id) : n.add(id); return n })
 
   const enhanced = useMemo(() => getEnhancedTrades(trades), [trades])
   const legacyCount = trades.length - enhanced.length
@@ -181,500 +185,498 @@ function AnalyticsInner() {
   const mistakes = useMemo(() => getMistakeAnalysis(trades), [trades])
   const emotions = useMemo(() => getEmotionalAnalytics(enhanced), [enhanced])
   const equity = useMemo(() => getEquityCurveData(trades, performanceMetrics.totalDeposit), [trades, performanceMetrics.totalDeposit])
-  const monthly = useMemo(() => getMonthlyPerformance(trades), [trades])
+  const monthly = useMemo(() => getMonthlyPerformance(trades).map(x => ({ ...x, label: monthLabel(x.month) })), [trades])
   const expectancy = useMemo(() => getExpectancy(trades), [trades])
   const risk = useMemo(() => getRiskManagement(trades), [trades])
   const insights = useMemo(() => getInsights(trades), [trades])
 
-  /* ─── Section content renderers ─── */
-  const renderSection = (sec: SectionDef) => {
-    const isOpen = open.has(sec.id)
-    const body = (() => {
-      switch (sec.id) {
-        /* ── 1. R Multiple ── */
-        case "r-multiple": {
-          if (!rMultiple.length) return <EmptyState message="Not enough data to calculate R multiples." />
-          const best = rMultiple.filter(b => b.totalPnl > 0).sort((a, b) => b.totalPnl - a.totalPnl)[0]
-          const worst = rMultiple.filter(b => b.totalPnl < 0).sort((a, b) => a.totalPnl - b.totalPnl)[0]
-          const common = rMultiple.sort((a, b) => b.count - a.count)[0]
-          return (
-            <div className="space-y-4">
-              <div className="h-56">
-                <ResponsiveContainer width="100%" height="100%">
-                  <BarChart data={rMultiple} layout="vertical" margin={{ left: 80, right: 16 }}>
-                    <XAxis type="number" {...AXIS_PROPS} />
-                    <YAxis type="category" dataKey="key" width={80} {...AXIS_PROPS} />
-                    <Tooltip content={<ChartTooltip formatter={(v: number) => v} />} />
-                    <Bar dataKey="count" fill="#6366f1" radius={[0, 6, 6, 0]} />
-                  </BarChart>
-                </ResponsiveContainer>
-              </div>
-              <div className="grid grid-cols-3 gap-3">
-                <KpiCard label="Biggest Profit Bucket" value={best?.key || "N/A"} positive />
-                <KpiCard label="Biggest Loss Bucket" value={worst?.key || "N/A"} positive={false} />
-                <KpiCard label="Most Common R" value={common?.key || "N/A"} positive={null} />
-              </div>
-            </div>
-          )
-        }
-        /* ── 2. Symbol ── */
-        case "symbols": {
-          if (!symbols.length) return <EmptyState message="Not enough data." />
-          return (
-            <div className="space-y-4">
-              <div className="h-56">
-                <ResponsiveContainer width="100%" height="100%">
-                  <BarChart data={symbols} layout="vertical" margin={{ left: 72, right: 16 }}>
-                    <XAxis type="number" {...AXIS_PROPS} />
-                    <YAxis type="category" dataKey="symbol" width={70} {...AXIS_PROPS} />
-                    <Tooltip content={<ChartTooltip formatter={(v: number, n: string) => n === "netPnl" ? `$${v.toFixed(2)}` : v} />} />
-                    <Bar dataKey="netPnl" radius={[0, 6, 6, 0]}>
-                      {symbols.map((e, i) => <Cell key={i} fill={e.netPnl >= 0 ? "#10b981" : "#f43f5e"} />)}
-                    </Bar>
-                  </BarChart>
-                </ResponsiveContainer>
-              </div>
-              <DataTable
-                headers={[
-                  { key: "sym", label: "Symbol" },
-                  { key: "tr", label: "Trades", align: "right" },
-                  { key: "w", label: "W", align: "right" },
-                  { key: "l", label: "L", align: "right" },
-                  { key: "wr", label: "Win Rate", align: "right" },
-                  { key: "pnl", label: "Net P&L", align: "right" },
-                  { key: "pf", label: "PF", align: "right" },
-                ]}
-                rows={symbols.map(s => ({
-                  key: s.symbol,
-                  cells: [
-                    s.symbol,
-                    String(s.totalTrades),
-                    { value: String(s.wins), color: "text-emerald-400" },
-                    { value: String(s.losses), color: "text-rose-400" },
-                    { value: `${s.winRate.toFixed(1)}%` },
-                    { value: `$${s.netPnl.toFixed(2)}`, color: s.netPnl >= 0 ? "text-emerald-400" : "text-rose-400", mono: true },
-                    { value: s.profitFactor === Infinity ? "∞" : s.profitFactor.toFixed(2) },
-                  ],
-                }))}
-              />
-              <div className="grid grid-cols-3 gap-3">
-                <KpiCard label="Best" value={`${symbols[0]?.symbol} $${symbols[0]?.netPnl.toFixed(2)}`} positive />
-                <KpiCard label="Worst" value={`${symbols[symbols.length - 1]?.symbol} $${symbols[symbols.length - 1]?.netPnl.toFixed(2)}`} positive={false} />
-                <KpiCard label="Most Traded" value={symbols.sort((a, b) => b.totalTrades - a.totalTrades)[0]?.symbol || ""} positive={null} />
-              </div>
-            </div>
-          )
-        }
-        /* ── 3. Day Distribution ── */
-        case "day-distribution": {
-          if (dayDist.every(d => !d.total)) return <EmptyState message="Not enough data." />
-          return (
+  // Note: always sort copies — these arrays are also rendered as charts/tables.
+  const renderBody = (id: string): React.ReactNode => {
+    switch (id) {
+      case "r-multiple": {
+        if (!rMultiple.length) return <NoData description="R multiples need a stop loss on each trade (or an achieved R). Add stops when logging trades." />
+        const best = [...rMultiple].filter(b => b.totalPnl > 0).sort((a, b) => b.totalPnl - a.totalPnl)[0]
+        const worst = [...rMultiple].filter(b => b.totalPnl < 0).sort((a, b) => a.totalPnl - b.totalPnl)[0]
+        const common = [...rMultiple].sort((a, b) => b.count - a.count)[0]
+        return (
+          <div className="space-y-4">
             <div className="h-56">
               <ResponsiveContainer width="100%" height="100%">
-                <BarChart data={dayDist}>
-                  <XAxis dataKey="day" {...AXIS_PROPS} />
-                  <YAxis {...AXIS_PROPS} />
-                  <Tooltip content={<ChartTooltip formatter={(v: number) => v} />} />
-                  <Bar dataKey="wins" stackId="a" fill="#10b981" radius={[0, 0, 0, 0]} />
-                  <Bar dataKey="losses" stackId="a" fill="#f43f5e" radius={[0, 0, 0, 0]} />
-                  <Bar dataKey="breakevens" stackId="a" fill="#f59e0b" radius={[4, 4, 0, 0]} />
+                <BarChart data={rMultiple} layout="vertical" margin={{ left: 8, right: 16 }}>
+                  {GRID_H}
+                  <XAxis type="number" allowDecimals={false} {...AXIS_PROPS} />
+                  <YAxis type="category" dataKey="key" width={80} {...AXIS_PROPS} />
+                  <Tooltip cursor={CURSOR} content={<ChartTooltip />} />
+                  <Bar dataKey="count" radius={[0, 4, 4, 0]}>
+                    {rMultiple.map((b, i) => <Cell key={i} fill={b.totalPnl > 0 ? "var(--profit)" : b.totalPnl < 0 ? "var(--loss)" : "var(--chart-2)"} />)}
+                  </Bar>
                 </BarChart>
               </ResponsiveContainer>
             </div>
-          )
-        }
-        /* ── 4. Weekday ── */
-        case "weekday": {
-          if (weekday.every(d => !d.trades)) return <EmptyState message="Not enough data." />
-          const best = weekday.filter(d => d.trades > 0).sort((a, b) => b.netPnl - a.netPnl)[0]
-          const worst = weekday.filter(d => d.trades > 0).sort((a, b) => a.netPnl - b.netPnl)[0]
-          const active = weekday.sort((a, b) => b.trades - a.trades)[0]
-          return (
-            <div className="space-y-3">
-              <DataTable
-                headers={[
-                  { key: "d", label: "Day" }, { key: "tr", label: "Trades", align: "right" },
-                  { key: "w", label: "W", align: "right" }, { key: "l", label: "L", align: "right" },
-                  { key: "be", label: "BE", align: "right" }, { key: "wr", label: "WR", align: "right" },
-                  { key: "pnl", label: "P&L", align: "right" }, { key: "rr", label: "Avg RR", align: "right" },
-                ]}
-                rows={weekday.map(d => {
-                  const isBest = best && d.day === best.day && d.trades > 0
-                  const isWorst = worst && d.day === worst.day && d.trades > 0
-                  return {
-                    key: d.day,
-                    cells: [
-                      { value: `${d.day}${isBest ? " ★" : ""}${isWorst ? " ⚠" : ""}`, color: isBest ? "text-emerald-400" : isWorst ? "text-rose-400" : "" },
-                      String(d.trades),
-                      { value: String(d.wins), color: "text-emerald-400" },
-                      { value: String(d.losses), color: "text-rose-400" },
-                      { value: String(d.breakevens), color: "text-amber-400" },
-                      `${d.winRate.toFixed(1)}%`,
-                      { value: `$${d.netPnl.toFixed(2)}`, color: d.netPnl >= 0 ? "text-emerald-400" : "text-rose-400", mono: true },
-                      d.avgRR.toFixed(2),
-                    ],
-                  }
-                })}
-              />
-              {best && (
-                <p className="text-[11px] text-zinc-500 leading-relaxed">
-                  {best.day} is most profitable (${best.netPnl.toFixed(2)}).
-                  {worst && worst.day !== best.day && ` ${worst.day} is least profitable ($${worst.netPnl.toFixed(2)}).`}
-                  {" "}{active.day} is the busiest ({active.trades} trades).
-                </p>
-              )}
+            <div className="grid grid-cols-1 gap-2 sm:grid-cols-3">
+              <Tile label="Most profitable bucket" value={best?.key || "—"} tone={best ? "profit" : "default"} />
+              <Tile label="Most costly bucket" value={worst?.key || "—"} tone={worst ? "loss" : "default"} />
+              <Tile label="Most common" value={common?.key || "—"} />
             </div>
-          )
-        }
-        /* ── 5. Session ── */
-        case "session": {
-          if (!session.length) return <EmptyState message="Collect more enhanced trades." />
-          return (
-            <div className="space-y-4">
-              <div className="grid grid-cols-2 gap-2">
-                {session.map(s => (
-                  <KpiCard key={s.session} label={s.session} value={`${s.winRate.toFixed(1)}%`} sub={`${s.trades} tr · $${s.netPnl.toFixed(2)}`} positive={s.netPnl >= 0} />
-                ))}
-              </div>
-              <div className="h-40">
-                <ResponsiveContainer width="100%" height="100%">
-                  <BarChart data={session}>
-                    <XAxis dataKey="session" {...AXIS_PROPS} />
-                    <YAxis {...AXIS_PROPS} domain={[0, 100]} />
-                    <Tooltip content={<ChartTooltip formatter={(v: number) => `${v.toFixed(1)}%`} />} />
-                    <Bar dataKey="winRate" fill="#6366f1" radius={[4, 4, 0, 0]} />
-                  </BarChart>
-                </ResponsiveContainer>
-              </div>
+          </div>
+        )
+      }
+      case "symbols": {
+        if (!symbols.length) return <NoData description={NEEDS_TRADES} />
+        const byPnl = [...symbols].sort((a, b) => b.netPnl - a.netPnl)
+        const mostTraded = [...symbols].sort((a, b) => b.totalTrades - a.totalTrades)[0]
+        return (
+          <div className="space-y-4">
+            <div className="h-56">
+              <ResponsiveContainer width="100%" height="100%">
+                <BarChart data={byPnl} layout="vertical" margin={{ left: 8, right: 16 }}>
+                  {GRID_H}
+                  <XAxis type="number" {...AXIS_PROPS} tickFormatter={(v: number) => `$${v}`} />
+                  <YAxis type="category" dataKey="symbol" width={72} {...AXIS_PROPS} />
+                  <Tooltip cursor={CURSOR} content={<ChartTooltip formatter={money} />} />
+                  <Bar dataKey="netPnl" radius={[0, 4, 4, 0]}>
+                    {byPnl.map((e, i) => <Cell key={i} fill={e.netPnl >= 0 ? "var(--profit)" : "var(--loss)"} />)}
+                  </Bar>
+                </BarChart>
+              </ResponsiveContainer>
             </div>
-          )
-        }
-        /* ── 6. HTF Bias ── */
-        case "htf-bias": {
-          if (!htfBias.length) return <EmptyState message="Collect more enhanced trades." />
-          return (
-            <div className="grid grid-cols-2 gap-3">
-              {htfBias.map(b => (
-                <div key={b.bias} className="p-4 bg-zinc-900/60 border border-zinc-800 rounded-xl">
-                  <div className="flex items-center gap-2 mb-2">
-                    {b.bias === "Bullish"
-                      ? <TrendingUp className="w-4 h-4 text-emerald-400" />
-                      : <TrendingDown className="w-4 h-4 text-rose-400" />}
-                    <p className="text-sm font-semibold text-zinc-100">{b.bias} Bias</p>
-                  </div>
-                  <p className="text-2xl font-semibold tracking-tight text-zinc-100 mb-1">{b.winRate.toFixed(1)}%</p>
-                  <p className="text-[11px] text-zinc-500">{b.trades} trades · ${b.netPnl.toFixed(2)}</p>
-                </div>
-              ))}
-            </div>
-          )
-        }
-        /* ── 7. Entry Models ── */
-        case "entry-models": {
-          if (!entryModels.length) return <EmptyState message="Collect more enhanced trades." />
-          return (
-            <div className="space-y-4">
-              <div className="h-52">
-                <ResponsiveContainer width="100%" height="100%">
-                  <BarChart data={entryModels} layout="vertical" margin={{ left: 90, right: 16 }}>
-                    <XAxis type="number" {...AXIS_PROPS} domain={[0, 100]} />
-                    <YAxis type="category" dataKey="model" width={85} {...AXIS_PROPS} />
-                    <Tooltip content={<ChartTooltip formatter={(v: number) => `${v.toFixed(1)}%`} />} />
-                    <Bar dataKey="winRate" radius={[0, 6, 6, 0]}>
-                      {entryModels.map((e, i) => <Cell key={i} fill={e.winRate >= 50 ? "#10b981" : "#f43f5e"} />)}
-                    </Bar>
-                  </BarChart>
-                </ResponsiveContainer>
-              </div>
-              <DataTable
-                headers={[
-                  { key: "m", label: "Model" }, { key: "tr", label: "Tr", align: "right" },
-                  { key: "wr", label: "WR", align: "right" }, { key: "pf", label: "PF", align: "right" },
-                  { key: "pnl", label: "P&L", align: "right" }, { key: "rr", label: "Avg RR", align: "right" },
-                ]}
-                rows={entryModels.map(m => ({
-                  key: m.model,
-                  cells: [
-                    m.model,
-                    String(m.trades),
-                    { value: `${m.winRate.toFixed(1)}%`, color: m.winRate >= 50 ? "text-emerald-400" : "text-rose-400" },
-                    m.profitFactor === Infinity ? "∞" : m.profitFactor.toFixed(2),
-                    { value: `$${m.netPnl.toFixed(2)}`, color: m.netPnl >= 0 ? "text-emerald-400" : "text-rose-400", mono: true },
-                    m.avgRR.toFixed(2),
-                  ],
-                }))}
-              />
-            </div>
-          )
-        }
-        /* ── 8. Setup Score ── */
-        case "setup-score": {
-          if (setupScore.data.every(d => !d.trades)) return <EmptyState message="Collect more enhanced trades." />
-          const filtered = setupScore.data.filter(d => d.trades > 0)
-          return (
-            <div className="space-y-4">
-              <div className="grid grid-cols-2 gap-3">
-                <KpiCard label="Avg Score — Winners" value={`${setupScore.avgScoreWinners.toFixed(2)}/8`} positive />
-                <KpiCard label="Avg Score — Losers" value={`${setupScore.avgScoreLosers.toFixed(2)}/8`} positive={false} />
-              </div>
-              <div className="h-44">
-                <ResponsiveContainer width="100%" height="100%">
-                  <BarChart data={filtered}>
-                    <XAxis dataKey="score" {...AXIS_PROPS} label={{ value: "Setup Score", position: "insideBottom", offset: -4, style: { fill: "var(--muted-foreground)", fontSize: 9 } }} />
-                    <YAxis {...AXIS_PROPS} domain={[0, 100]} />
-                    <Tooltip content={<ChartTooltip formatter={(v: number) => `${v.toFixed(1)}%`} />} />
-                    <Bar dataKey="winRate" radius={[4, 4, 0, 0]} fill="#8b5cf6" />
-                  </BarChart>
-                </ResponsiveContainer>
-              </div>
-            </div>
-          )
-        }
-        /* ── 9. Mistakes ── */
-        case "mistakes": {
-          if (!mistakes.length) return <EmptyState message="Not enough data." />
-          const costly = mistakes.sort((a, b) => a.netPnl - b.netPnl)[0]
-          return (
-            <div className="space-y-3">
-              <div className="grid grid-cols-2 gap-3">
-                <KpiCard label="Most Costly" value={`${costly.mistake} $${Math.abs(costly.netPnl).toFixed(2)}`} positive={false} />
-                <KpiCard label="Most Common" value={`${mistakes[0].mistake} (${mistakes[0].frequency}x)`} positive={null} />
-              </div>
-              <DataTable
-                headers={[
-                  { key: "m", label: "Mistake" }, { key: "freq", label: "Freq", align: "right" },
-                  { key: "wr", label: "WR", align: "right" }, { key: "pnl", label: "P&L", align: "right" },
-                ]}
-                rows={mistakes.map(m => ({
-                  key: m.mistake,
-                  cells: [
-                    m.mistake,
-                    String(m.frequency),
-                    { value: `${m.winRate.toFixed(1)}%`, color: m.winRate >= 50 ? "text-emerald-400" : "text-rose-400" },
-                    { value: `$${m.netPnl.toFixed(2)}`, color: m.netPnl >= 0 ? "text-emerald-400" : "text-rose-400", mono: true },
-                  ],
-                }))}
-              />
-            </div>
-          )
-        }
-        /* ── 10. Emotional ── */
-        case "emotional": {
-          if (!emotions.length) return <EmptyState message="Collect more enhanced trades." />
-          return (
             <DataTable
               headers={[
-                { key: "e", label: "Emotion" }, { key: "tr", label: "Trades", align: "right" },
-                { key: "wr", label: "Win Rate", align: "right" }, { key: "pnl", label: "Net P&L", align: "right" },
+                { key: "sym", label: "Symbol" },
+                { key: "tr", label: "Trades", align: "right" },
+                { key: "w", label: "Wins", align: "right" },
+                { key: "l", label: "Losses", align: "right" },
+                { key: "wr", label: "Win rate", align: "right" },
+                { key: "pnl", label: "Net P&L", align: "right" },
+                { key: "pf", label: "Profit factor", align: "right" },
               ]}
-              rows={emotions.map(e => ({
-                key: e.emotion,
+              rows={byPnl.map(s => ({
+                key: s.symbol,
                 cells: [
-                  e.emotion,
-                  String(e.trades),
-                  { value: `${e.winRate.toFixed(1)}%`, color: e.winRate >= 50 ? "text-emerald-400" : "text-rose-400" },
-                  { value: `$${e.netPnl.toFixed(2)}`, color: e.netPnl >= 0 ? "text-emerald-400" : "text-rose-400", mono: true },
+                  { value: s.symbol },
+                  String(s.totalTrades),
+                  { value: String(s.wins), tone: "profit" },
+                  { value: String(s.losses), tone: "loss" },
+                  pct(s.winRate),
+                  { value: money(s.netPnl), tone: signTone(s.netPnl) },
+                  pf(s.profitFactor),
                 ],
               }))}
             />
-          )
-        }
-        /* ── 11. Monthly ── */
-        case "monthly": {
-          if (!monthly.length) return <EmptyState message="Not enough data." />
-          return (
-            <div className="space-y-4">
-              <div className="h-52">
-                <ResponsiveContainer width="100%" height="100%">
-                  <ComposedChart data={monthly}>
-                    <XAxis dataKey="month" {...AXIS_PROPS} />
-                    <YAxis yAxisId="l" {...AXIS_PROPS} />
-                    <YAxis yAxisId="r" orientation="right" {...AXIS_PROPS} domain={[0, 100]} />
-                    <Tooltip content={<ChartTooltip formatter={(v: number) => typeof v === "number" ? v.toFixed(2) : v} />} />
-                    <Bar yAxisId="l" dataKey="netPnl" fill="#6366f1" radius={[4, 4, 0, 0]} />
-                    <Line yAxisId="r" type="monotone" dataKey="winRate" stroke="#10b981" strokeWidth={2} dot={false} />
-                  </ComposedChart>
-                </ResponsiveContainer>
-              </div>
-              <DataTable
-                headers={[
-                  { key: "mo", label: "Month" }, { key: "tr", label: "Tr", align: "right" },
-                  { key: "wr", label: "WR", align: "right" }, { key: "pnl", label: "P&L", align: "right" },
-                  { key: "r", label: "Net R", align: "right" },
-                ]}
-                rows={monthly.map(m => ({
-                  key: m.month,
-                  cells: [
-                    m.month, String(m.trades), `${m.winRate.toFixed(1)}%`,
-                    { value: `$${m.netPnl.toFixed(2)}`, color: m.netPnl >= 0 ? "text-emerald-400" : "text-rose-400", mono: true },
-                    { value: `${m.netR.toFixed(2)}R`, color: m.netR >= 0 ? "text-emerald-400" : "text-rose-400", mono: true },
-                  ],
-                }))}
-              />
+            <div className="grid grid-cols-1 gap-2 sm:grid-cols-3">
+              <Tile label="Best symbol" value={byPnl[0]?.symbol || "—"} sub={byPnl[0] ? money(byPnl[0].netPnl) : undefined} tone="profit" />
+              <Tile label="Worst symbol" value={byPnl[byPnl.length - 1]?.symbol || "—"} sub={byPnl.length ? money(byPnl[byPnl.length - 1].netPnl) : undefined} tone={signTone(byPnl[byPnl.length - 1]?.netPnl || 0)} />
+              <Tile label="Most traded" value={mostTraded?.symbol || "—"} sub={mostTraded ? `${mostTraded.totalTrades} trades` : undefined} />
             </div>
-          )
-        }
-        /* ── 12. Equity & Drawdown ── */
-        case "equity": {
-          return (
-            <div className="space-y-4">
-              <EquityCurveChart />
-              {equity.length > 0 && (
-                <div className="h-40">
-                  <p className="text-[11px] font-medium text-zinc-500 mb-2">Drawdown Overlay</p>
+          </div>
+        )
+      }
+      case "day-distribution": {
+        if (dayDist.every(d => !d.total)) return <NoData description={NEEDS_TRADES} />
+        return (
+          <div className="h-64">
+            <ResponsiveContainer width="100%" height="100%">
+              <BarChart data={dayDist}>
+                {GRID}
+                <XAxis dataKey="day" {...AXIS_PROPS} tickFormatter={(d: string) => String(d).slice(0, 3)} />
+                <YAxis allowDecimals={false} width={28} {...AXIS_PROPS} />
+                <Tooltip cursor={CURSOR} content={<ChartTooltip />} />
+                <Bar dataKey="wins" stackId="a" fill="var(--profit)" />
+                <Bar dataKey="losses" stackId="a" fill="var(--loss)" />
+                <Bar dataKey="breakevens" stackId="a" fill="var(--warning)" radius={[4, 4, 0, 0]} />
+              </BarChart>
+            </ResponsiveContainer>
+          </div>
+        )
+      }
+      case "weekday": {
+        if (weekday.every(d => !d.trades)) return <NoData description={NEEDS_TRADES} />
+        const active = weekday.filter(d => d.trades > 0)
+        const best = [...active].sort((a, b) => b.netPnl - a.netPnl)[0]
+        const worst = [...active].sort((a, b) => a.netPnl - b.netPnl)[0]
+        const busiest = [...active].sort((a, b) => b.trades - a.trades)[0]
+        return (
+          <div className="space-y-3">
+            <DataTable
+              headers={[
+                { key: "d", label: "Day" }, { key: "tr", label: "Trades", align: "right" },
+                { key: "wr", label: "Win rate", align: "right" }, { key: "pnl", label: "P&L", align: "right" },
+              ]}
+              rows={weekday.map(d => ({
+                key: d.day,
+                cells: [
+                  { value: d.day, tone: best && d.day === best.day && d.trades > 0 ? "profit" : worst && d.day === worst.day && d.trades > 0 && worst.netPnl < 0 ? "loss" : undefined },
+                  String(d.trades),
+                  d.trades ? pct(d.winRate) : "—",
+                  { value: d.trades ? money(d.netPnl) : "—", tone: d.trades ? signTone(d.netPnl) : undefined },
+                ],
+              }))}
+            />
+            {best && (
+              <p className="text-xs leading-relaxed text-muted-foreground">
+                {best.day} is your most profitable day ({money(best.netPnl)}).
+                {worst && worst.day !== best.day && ` ${worst.day} is the least profitable (${money(worst.netPnl)}).`}
+                {busiest && ` ${busiest.day} is the busiest (${busiest.trades} trades).`}
+              </p>
+            )}
+          </div>
+        )
+      }
+      case "session": {
+        if (!session.length) return <NoData description={NEEDS_JOURNAL} />
+        return (
+          <div className="space-y-4">
+            <div className="grid grid-cols-2 gap-2">
+              {session.map(s => (
+                <Tile key={s.session} label={s.session} value={pct(s.winRate)} sub={`${s.trades} trades · ${money(s.netPnl)}`} tone={signTone(s.netPnl)} />
+              ))}
+            </div>
+            <div className="h-40">
+              <ResponsiveContainer width="100%" height="100%">
+                <BarChart data={session}>
+                  {GRID}
+                  <XAxis dataKey="session" {...AXIS_PROPS} />
+                  <YAxis width={32} {...AXIS_PROPS} domain={[0, 100]} tickFormatter={(v: number) => `${v}%`} />
+                  <Tooltip cursor={CURSOR} content={<ChartTooltip formatter={pct} />} />
+                  <Bar dataKey="winRate" fill="var(--brand)" radius={[4, 4, 0, 0]} />
+                </BarChart>
+              </ResponsiveContainer>
+            </div>
+          </div>
+        )
+      }
+      case "htf-bias": {
+        if (!htfBias.length) return <NoData description={NEEDS_JOURNAL} />
+        return (
+          <div className="grid grid-cols-2 gap-2">
+            {htfBias.map(b => (
+              <div key={b.bias} className="rounded-lg border border-border bg-background/40 p-4">
+                <div className="mb-2 flex items-center gap-2">
+                  {b.bias === "Bullish" ? <TrendingUp className="size-4 text-profit" /> : <TrendingDown className="size-4 text-loss" />}
+                  <p className="text-sm font-medium">{b.bias} bias</p>
+                </div>
+                <p className="font-mono text-2xl font-semibold tabular">{pct(b.winRate)}</p>
+                <p className="mt-1 text-xs text-muted-foreground">{b.trades} trades · <span className={toneClass(signTone(b.netPnl))}>{money(b.netPnl)}</span></p>
+              </div>
+            ))}
+          </div>
+        )
+      }
+      case "entry-models": {
+        if (!entryModels.length) return <NoData description={NEEDS_JOURNAL} />
+        return (
+          <div className="space-y-4">
+            <div className="h-52">
+              <ResponsiveContainer width="100%" height="100%">
+                <BarChart data={entryModels} layout="vertical" margin={{ left: 8, right: 16 }}>
+                  {GRID_H}
+                  <XAxis type="number" {...AXIS_PROPS} domain={[0, 100]} tickFormatter={(v: number) => `${v}%`} />
+                  <YAxis type="category" dataKey="model" width={96} {...AXIS_PROPS} />
+                  <Tooltip cursor={CURSOR} content={<ChartTooltip formatter={pct} />} />
+                  <Bar dataKey="winRate" radius={[0, 4, 4, 0]}>
+                    {entryModels.map((e, i) => <Cell key={i} fill={e.winRate >= 50 ? "var(--profit)" : "var(--loss)"} />)}
+                  </Bar>
+                </BarChart>
+              </ResponsiveContainer>
+            </div>
+            <DataTable
+              headers={[
+                { key: "m", label: "Model" }, { key: "tr", label: "Trades", align: "right" },
+                { key: "wr", label: "Win rate", align: "right" }, { key: "pf", label: "Profit factor", align: "right" },
+                { key: "pnl", label: "P&L", align: "right" }, { key: "rr", label: "Avg R", align: "right" },
+              ]}
+              rows={entryModels.map(x => ({
+                key: x.model,
+                cells: [
+                  { value: x.model },
+                  String(x.trades),
+                  { value: pct(x.winRate), tone: x.winRate >= 50 ? "profit" : "loss" },
+                  pf(x.profitFactor),
+                  { value: money(x.netPnl), tone: signTone(x.netPnl) },
+                  x.avgRR.toFixed(2),
+                ],
+              }))}
+            />
+          </div>
+        )
+      }
+      case "setup-score": {
+        if (setupScore.data.every(d => !d.trades)) return <NoData description="Tick the entry confluences (POI, sweep, MSS, FVG …) when logging trades to score each setup." />
+        const filtered = setupScore.data.filter(d => d.trades > 0)
+        return (
+          <div className="space-y-4">
+            <div className="grid grid-cols-2 gap-2">
+              <Tile label="Avg score, winners" value={`${setupScore.avgScoreWinners.toFixed(2)} / 8`} tone="profit" />
+              <Tile label="Avg score, losers" value={`${setupScore.avgScoreLosers.toFixed(2)} / 8`} tone="loss" />
+            </div>
+            <div className="h-44">
+              <ResponsiveContainer width="100%" height="100%">
+                <BarChart data={filtered}>
+                  {GRID}
+                  <XAxis dataKey="score" {...AXIS_PROPS} />
+                  <YAxis width={32} {...AXIS_PROPS} domain={[0, 100]} tickFormatter={(v: number) => `${v}%`} />
+                  <Tooltip cursor={CURSOR} content={<ChartTooltip formatter={pct} />} labelFormatter={(l: any) => `Score ${l}`} />
+                  <Bar dataKey="winRate" radius={[4, 4, 0, 0]} fill="var(--chart-3)" />
+                </BarChart>
+              </ResponsiveContainer>
+            </div>
+          </div>
+        )
+      }
+      case "mistakes": {
+        if (!mistakes.length) return <NoData title="No mistakes tagged" description="Tag mistakes (FOMO, moved stop, overtraded …) on trades to see what they cost you." />
+        const costly = [...mistakes].sort((a, b) => a.netPnl - b.netPnl)[0]
+        const common = [...mistakes].sort((a, b) => b.frequency - a.frequency)[0]
+        return (
+          <div className="space-y-3">
+            <div className="grid grid-cols-2 gap-2">
+              <Tile label="Most costly" value={costly.mistake} sub={money(costly.netPnl)} tone="loss" />
+              <Tile label="Most common" value={common.mistake} sub={`${common.frequency}×`} />
+            </div>
+            <DataTable
+              headers={[
+                { key: "m", label: "Mistake" }, { key: "freq", label: "Times", align: "right" },
+                { key: "wr", label: "Win rate", align: "right" }, { key: "pnl", label: "P&L", align: "right" },
+              ]}
+              rows={mistakes.map(x => ({
+                key: x.mistake,
+                cells: [
+                  { value: x.mistake },
+                  String(x.frequency),
+                  { value: pct(x.winRate), tone: x.winRate >= 50 ? "profit" : "loss" },
+                  { value: money(x.netPnl), tone: signTone(x.netPnl) },
+                ],
+              }))}
+            />
+          </div>
+        )
+      }
+      case "emotional": {
+        if (!emotions.length) return <NoData description={NEEDS_JOURNAL} />
+        return (
+          <DataTable
+            headers={[
+              { key: "e", label: "Emotion" }, { key: "tr", label: "Trades", align: "right" },
+              { key: "wr", label: "Win rate", align: "right" }, { key: "pnl", label: "Net P&L", align: "right" },
+            ]}
+            rows={emotions.map(e => ({
+              key: e.emotion,
+              cells: [
+                { value: e.emotion },
+                String(e.trades),
+                { value: pct(e.winRate), tone: e.winRate >= 50 ? "profit" : "loss" },
+                { value: money(e.netPnl), tone: signTone(e.netPnl) },
+              ],
+            }))}
+          />
+        )
+      }
+      case "monthly": {
+        if (!monthly.length) return <NoData description={NEEDS_TRADES} />
+        return (
+          <div className="space-y-4">
+            <div className="h-56">
+              <ResponsiveContainer width="100%" height="100%">
+                <ComposedChart data={monthly}>
+                  {GRID}
+                  <XAxis dataKey="label" {...AXIS_PROPS} />
+                  <YAxis yAxisId="l" width={56} {...AXIS_PROPS} tickFormatter={(v: number) => `$${v}`} />
+                  <YAxis yAxisId="r" orientation="right" width={36} {...AXIS_PROPS} domain={[0, 100]} tickFormatter={(v: number) => `${v}%`} />
+                  <Tooltip cursor={CURSOR} content={<ChartTooltip formatter={(v: number, n: string) => (n === "winRate" ? pct(v) : money(v))} />} />
+                  <Bar yAxisId="l" dataKey="netPnl" radius={[4, 4, 0, 0]}>
+                    {monthly.map((x, i) => <Cell key={i} fill={x.netPnl >= 0 ? "var(--profit)" : "var(--loss)"} />)}
+                  </Bar>
+                  <Line yAxisId="r" type="monotone" dataKey="winRate" stroke="var(--chart-2)" strokeWidth={2} dot={{ r: 3, fill: "var(--chart-2)" }} />
+                </ComposedChart>
+              </ResponsiveContainer>
+            </div>
+            <DataTable
+              headers={[
+                { key: "mo", label: "Month" }, { key: "tr", label: "Trades", align: "right" },
+                { key: "wr", label: "Win rate", align: "right" }, { key: "pnl", label: "P&L", align: "right" },
+                { key: "r", label: "Net R", align: "right" },
+              ]}
+              rows={monthly.map(x => ({
+                key: x.month,
+                cells: [
+                  { value: x.label },
+                  String(x.trades),
+                  pct(x.winRate),
+                  { value: money(x.netPnl), tone: signTone(x.netPnl) },
+                  { value: `${x.netR >= 0 ? "+" : ""}${x.netR.toFixed(2)}R`, tone: signTone(x.netR) },
+                ],
+              }))}
+            />
+          </div>
+        )
+      }
+      case "equity": {
+        if (!trades.length) return <NoData description={NEEDS_TRADES} />
+        return (
+          <div className="space-y-5">
+            <EquityCurveChart height={240} />
+            {equity.length > 0 && (
+              <div>
+                <p className="mb-2 text-xs font-medium text-muted-foreground">Drawdown from peak</p>
+                <div className="h-36">
                   <ResponsiveContainer width="100%" height="100%">
-                    <AreaChart data={equity}>
-                      <XAxis dataKey="tradeNumber" {...AXIS_PROPS} label={{ value: "Trade #", position: "insideBottom", offset: -4, style: { fill: "var(--muted-foreground)", fontSize: 9 } }} />
-                      <YAxis {...AXIS_PROPS} domain={[0, "auto"]} />
-                      <Tooltip content={<ChartTooltip formatter={(v: number, n: string) => n === "drawdown" ? `${v.toFixed(1)}%` : `$${v.toFixed(2)}`} />} />
-                      <Area type="monotone" dataKey="drawdown" stroke="#f43f5e" fill="#f43f5e20" />
+                    <AreaChart data={equity} margin={{ top: 4, right: 8, left: 0, bottom: 0 }}>
+                      <defs>
+                        <linearGradient id="ddGrad" x1="0" y1="0" x2="0" y2="1">
+                          <stop offset="0%" stopColor="var(--loss)" stopOpacity={0.05} />
+                          <stop offset="100%" stopColor="var(--loss)" stopOpacity={0.3} />
+                        </linearGradient>
+                      </defs>
+                      {GRID}
+                      <XAxis dataKey="tradeNumber" {...AXIS_PROPS} minTickGap={24} tickFormatter={(v: number) => `#${v}`} />
+                      <YAxis width={64} {...AXIS_PROPS} domain={[0, "auto"]} tickFormatter={(v: number) => `${Number(v).toFixed(1)}%`} />
+                      <Tooltip content={<ChartTooltip formatter={(v: number, n: string) => (n === "drawdown" ? `${Number(v).toFixed(2)}%` : money(v))} />} labelFormatter={(l: any) => `Trade #${l}`} />
+                      <Area type="monotone" dataKey="drawdown" stroke="var(--loss)" strokeWidth={1.5} fill="url(#ddGrad)" />
                     </AreaChart>
                   </ResponsiveContainer>
                 </div>
-              )}
-            </div>
-          )
-        }
-        /* ── 13. Expectancy ── */
-        case "expectancy": {
-          if (!m.totalTrades) return <EmptyState message="Not enough data." />
-          return (
-            <div className="space-y-3">
-              <KpiCard label="Expectancy / Trade" value={`$${expectancy.expectancyPerTrade.toFixed(2)}`} positive={expectancy.expectancyPerTrade >= 0} />
-              <KpiCard label="Expectancy in R" value={`${expectancy.expectancyInR.toFixed(2)}R`} positive={expectancy.expectancyInR >= 0} />
-              <KpiCard label="Win/Loss Ratio" value={`${expectancy.avgLoss > 0 ? (expectancy.avgWin / expectancy.avgLoss).toFixed(2) : "∞"}x`} positive={null} />
-              <p className="text-[10px] text-zinc-600 leading-relaxed">
-                {expectancy.winRate.toFixed(1)}% × ${expectancy.avgWin.toFixed(2)} — {expectancy.lossRate.toFixed(1)}% × ${expectancy.avgLoss.toFixed(2)}
-              </p>
-            </div>
-          )
-        }
-        /* ── 14. Risk Management ── */
-        case "risk-management": {
-          if (!m.totalTrades) return <EmptyState message="Not enough data." />
-          return (
-            <div className="grid grid-cols-2 gap-2">
-              <KpiCard label="Avg Risk" value={`$${risk.avgRiskPerTrade.toFixed(2)}`} positive={null} />
-              <KpiCard label="Avg RR Planned" value={`${risk.avgRRPlanned.toFixed(2)}R`} positive={null} />
-              <KpiCard label="Avg RR Achieved" value={`${risk.avgRRAchieved.toFixed(2)}R`} positive={risk.avgRRAchieved >= risk.avgRRPlanned} />
-              <KpiCard label="Largest Win" value={`+$${risk.largestWin.toFixed(2)}`} positive />
-              <KpiCard label="Largest Loss" value={`-$${Math.abs(risk.largestLoss).toFixed(2)}`} positive={false} />
-              <KpiCard label="Avg Winner" value={`$${risk.avgWinVal.toFixed(2)}`} positive />
-              <KpiCard label="Avg Loser" value={`-$${risk.avgLossVal.toFixed(2)}`} positive={false} />
-              <KpiCard label="Win/Loss Ratio" value={`${risk.avgLossVal > 0 ? (risk.avgWinVal / risk.avgLossVal).toFixed(2) : "∞"}x`} positive={null} />
-            </div>
-          )
-        }
-        default: return null
+              </div>
+            )}
+          </div>
+        )
       }
-    })()
-
-    return (
-      <div key={sec.id} className={`${sec.cols === 2 ? "lg:col-span-2" : sec.cols === "full" ? "lg:col-span-2 xl:col-span-3" : ""}`}>
-        <CardShell
-          title={sec.title}
-          icon={sec.icon}
-          action={
-            <button onClick={() => toggle(sec.id)} className="text-zinc-600 hover:text-zinc-300 transition-colors">
-              {isOpen ? <ArrowUpRight className="w-3.5 h-3.5" /> : <ArrowDownRight className="w-3.5 h-3.5" />}
-            </button>
-          }
-        >
-          {isOpen ? body : (
-            <div className="flex items-center justify-center py-3">
-              <button onClick={() => toggle(sec.id)} className="text-[11px] text-zinc-600 hover:text-zinc-400 transition-colors">
-                Show section
-              </button>
-            </div>
-          )}
-        </CardShell>
-      </div>
-    )
+      case "expectancy": {
+        if (!m.totalTrades) return <NoData description={NEEDS_TRADES} />
+        return (
+          <div className="space-y-2">
+            <Tile label="Expectancy per trade" value={money(expectancy.expectancyPerTrade)} tone={signTone(expectancy.expectancyPerTrade)} />
+            <Tile label="Expectancy in R" value={`${expectancy.expectancyInR >= 0 ? "+" : ""}${expectancy.expectancyInR.toFixed(2)}R`} tone={signTone(expectancy.expectancyInR)} />
+            <Tile label="Avg win ÷ avg loss" value={expectancy.avgLoss > 0 ? `${(expectancy.avgWin / expectancy.avgLoss).toFixed(2)}×` : "∞"} />
+            <p className="pt-1 font-mono text-xs leading-relaxed text-muted-foreground tabular">
+              {pct(expectancy.winRate)} × {formatMoney(expectancy.avgWin)} − {pct(expectancy.lossRate)} × {formatMoney(expectancy.avgLoss)}
+            </p>
+          </div>
+        )
+      }
+      case "risk-management": {
+        if (!m.totalTrades) return <NoData description={NEEDS_TRADES} />
+        return (
+          <div className="grid grid-cols-2 gap-2">
+            <Tile label="Avg risk / trade" value={formatMoney(risk.avgRiskPerTrade)} />
+            <Tile label="Avg planned R" value={`${risk.avgRRPlanned.toFixed(2)}R`} />
+            <Tile label="Avg achieved R" value={`${risk.avgRRAchieved.toFixed(2)}R`} tone={risk.avgRRAchieved >= risk.avgRRPlanned ? "profit" : "loss"} />
+            <Tile label="Win ÷ loss size" value={risk.avgLossVal > 0 ? `${(risk.avgWinVal / risk.avgLossVal).toFixed(2)}×` : "∞"} />
+            <Tile label="Largest win" value={money(risk.largestWin)} tone="profit" />
+            <Tile label="Largest loss" value={money(-Math.abs(risk.largestLoss))} tone="loss" />
+            <Tile label="Avg winner" value={formatMoney(risk.avgWinVal)} tone="profit" />
+            <Tile label="Avg loser" value={formatMoney(-Math.abs(risk.avgLossVal))} tone="loss" />
+          </div>
+        )
+      }
+      default:
+        return null
+    }
   }
 
-  /* ─── Render ─── */
+  const expectancyPerTrade = m.avgWin * (m.winRate / 100) - m.avgLoss * ((100 - m.winRate) / 100)
+  const recovery = performanceMetrics.maxDrawdown !== 0 ? m.totalPnl / Math.abs(performanceMetrics.maxDrawdown) : Infinity
+
   return (
-    <div className="min-h-screen bg-zinc-950">
-      <div className="max-w-[1600px] mx-auto px-4 md:px-6 py-8 space-y-8">
-        {/* ── Header ── */}
-        <div>
-          <h1 className="text-2xl font-semibold tracking-tight text-zinc-100">Performance Analytics</h1>
-          <p className="text-sm text-zinc-500 mt-1">Institutional-grade trading performance analysis</p>
-        </div>
+    <Page>
+      <PageHeader title="Analytics" description="Where your edge comes from, and where it leaks." />
 
-        {/* ── Legacy warning ── */}
-        {legacyCount > 0 && (
-          <div className="flex items-start gap-3 p-4 bg-amber-500/5 border border-amber-500/15 rounded-xl">
-            <AlertTriangle className="w-4 h-4 text-amber-400 shrink-0 mt-0.5" />
-            <div>
-              <p className="text-xs font-semibold text-amber-400">Some analytics exclude legacy trades</p>
-              <p className="text-[11px] text-amber-400/60 mt-0.5">
-                {legacyCount} trade(s) lack enhanced journaling fields. P&L, win rate, and equity include all trades.
-                Session, setup score, emotional, and HTF bias analytics use only enhanced trades.
-              </p>
-            </div>
-          </div>
-        )}
-
-        {/* ── Insights ── */}
-        {insights.length > 0 && (
+      {legacyCount > 0 && (
+        <div className="mb-6 flex items-start gap-3 rounded-xl border border-warning/25 bg-warning/5 p-4">
+          <AlertTriangle className="mt-0.5 size-4 shrink-0 text-warning" />
           <div>
-            <h2 className="text-xs font-semibold text-zinc-500 uppercase tracking-widest mb-3">Insights</h2>
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
-              {insights.map((ins, i) => <InsightBadge key={i} {...ins} />)}
-            </div>
-          </div>
-        )}
-
-        {/* ── Key Metrics ── */}
-        <div>
-          <h2 className="text-xs font-semibold text-zinc-500 uppercase tracking-widest mb-3">Overview</h2>
-          <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-7 gap-3">
-            <KpiCard label="Total Trades" value={String(m.totalTrades)} positive={null} />
-            <KpiCard label="Win Rate" value={`${m.winRate.toFixed(1)}%`} sub={`${m.wins}W / ${m.losses}L / ${m.breakeven}BE`} positive={m.winRate >= 50} />
-            <KpiCard label="Total P&L" value={`${m.totalPnl >= 0 ? "+" : ""}$${m.totalPnl.toFixed(2)}`} positive={m.totalPnl >= 0} />
-            <KpiCard label="Profit Factor" value={m.profitFactor === Infinity ? "∞" : `${m.profitFactor.toFixed(2)}x`} positive={m.profitFactor >= 1.5} />
-            <KpiCard label="Avg Win" value={`$${m.avgWin.toFixed(2)}`} positive />
-            <KpiCard label="Avg Loss" value={`-$${m.avgLoss.toFixed(2)}`} positive={false} />
-            <KpiCard label="Avg RR" value={`${m.avgRR.toFixed(2)}R`} positive={m.avgRR >= 1} />
+            <p className="text-sm font-medium">Some breakdowns only use fully journaled trades</p>
+            <p className="mt-0.5 text-xs text-muted-foreground">
+              {legacyCount} trade{legacyCount === 1 ? "" : "s"} {legacyCount === 1 ? "is" : "are"} missing journal fields. P&L, win rate and equity include
+              every trade; session, setup score, emotions and HTF bias use journaled trades only.
+            </p>
           </div>
         </div>
+      )}
 
-        {/* ── Section Grid ── */}
-        <div className="grid grid-cols-1 lg:grid-cols-2 xl:grid-cols-3 gap-4">
-          {SECTIONS.map(renderSection)}
-        </div>
-
-        {/* ── Summary ── */}
-        {m.totalTrades > 0 && (
-          <CardShell title="Summary Statistics" icon={<Activity className="w-3.5 h-3.5" />}>
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-              <div>
-                <p className="text-[11px] font-medium text-zinc-500 mb-1.5">Expectancy per Trade</p>
-                <p className={`text-xl font-semibold tracking-tight ${m.totalPnl >= 0 ? "text-emerald-400" : "text-rose-400"}`}>
-                  ${(m.avgWin * (m.winRate / 100) - m.avgLoss * ((100 - m.winRate) / 100)).toFixed(2)}
-                </p>
-                <p className="text-[10px] text-zinc-600 mt-1">Expected value per trade</p>
-              </div>
-              <div>
-                <p className="text-[11px] font-medium text-zinc-500 mb-1.5">Recovery Factor</p>
-                <p className="text-xl font-semibold tracking-tight text-zinc-100">
-                  {performanceMetrics.maxDrawdown !== 0 ? (m.totalPnl / Math.abs(performanceMetrics.maxDrawdown)).toFixed(2) : "∞"}
-                </p>
-                <p className="text-[10px] text-zinc-600 mt-1">Total profit vs max drawdown</p>
-              </div>
-              <div>
-                <p className="text-[11px] font-medium text-zinc-500 mb-1.5">Total Net R</p>
-                <p className={`text-xl font-semibold tracking-tight ${m.totalPnl >= 0 ? "text-emerald-400" : "text-rose-400"}`}>
-                  {m.netR.toFixed(2)}R
-                </p>
-                <p className="text-[10px] text-zinc-600 mt-1">Sum of all R multiples</p>
-              </div>
-            </div>
-          </CardShell>
-        )}
+      {/* KPIs */}
+      <div className="mb-6 grid grid-cols-2 gap-3 md:gap-4 lg:grid-cols-4">
+        <StatCard label="Net P&L" value={money(m.totalPnl)} tone={pnlTone(m.totalPnl)} icon={m.totalPnl >= 0 ? TrendingUp : TrendingDown} sub={`${m.totalTrades} trades`} />
+        <StatCard label="Win rate" value={pct(m.winRate)} icon={Target} sub={`${m.wins} wins · ${m.losses} losses · ${m.breakeven} BE`} />
+        <StatCard
+          label="Profit factor"
+          value={m.profitFactor === Infinity ? "∞" : m.profitFactor ? m.profitFactor.toFixed(2) : "—"}
+          tone={m.profitFactor >= 1 ? "profit" : m.profitFactor > 0 ? "loss" : "default"}
+          icon={Trophy}
+          sub={`Avg win ${formatMoney(m.avgWin)} · Avg loss ${formatMoney(m.avgLoss)}`}
+        />
+        <StatCard
+          label="Avg R per trade"
+          value={`${m.avgRR >= 0 ? "+" : ""}${m.avgRR.toFixed(2)}R`}
+          tone={pnlTone(m.avgRR)}
+          icon={Activity}
+          sub={`Net ${m.netR >= 0 ? "+" : ""}${m.netR.toFixed(2)}R`}
+        />
       </div>
-    </div>
+
+      {/* Insights */}
+      {insights.length > 0 && (
+        <div className="mb-6">
+          <h2 className="mb-3 text-sm font-medium">Insights</h2>
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
+            {insights.map((ins, i) => <InsightCard key={i} {...ins} />)}
+          </div>
+        </div>
+      )}
+
+      {/* Sections */}
+      <div className="grid grid-cols-1 gap-4 md:gap-6 lg:grid-cols-3">
+        {SECTIONS.map(sec => {
+          const isCollapsed = collapsed.has(sec.id)
+          return (
+            <Panel key={sec.id} className={cn(sec.cols === 2 && "lg:col-span-2", sec.cols === 3 && "lg:col-span-3")}>
+              <PanelHeader
+                title={sec.title}
+                description={sec.description}
+                icon={sec.icon}
+                actions={
+                  <button
+                    onClick={() => toggle(sec.id)}
+                    className="rounded-md p-1.5 text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
+                    aria-label={isCollapsed ? "Expand section" : "Collapse section"}
+                    title={isCollapsed ? "Expand" : "Collapse"}
+                  >
+                    <ChevronDown className={cn("size-4 transition-transform", isCollapsed && "-rotate-90")} />
+                  </button>
+                }
+              />
+              {!isCollapsed && <PanelBody>{renderBody(sec.id)}</PanelBody>}
+              {isCollapsed && <div className="h-5" />}
+            </Panel>
+          )
+        })}
+      </div>
+
+      {/* Summary */}
+      {m.totalTrades > 0 && (
+        <Panel className="mt-4 md:mt-6">
+          <PanelHeader title="Summary" icon={Activity} />
+          <PanelBody className="grid grid-cols-1 gap-6 md:grid-cols-3">
+            <div>
+              <p className="text-xs text-muted-foreground">Expectancy per trade</p>
+              <p className={cn("mt-1 font-mono text-xl font-semibold tabular", toneClass(signTone(expectancyPerTrade)))}>{money(expectancyPerTrade)}</p>
+              <p className="mt-1 text-xs text-muted-foreground">Expected value of an average trade</p>
+            </div>
+            <div>
+              <p className="text-xs text-muted-foreground">Recovery factor</p>
+              <p className="mt-1 font-mono text-xl font-semibold tabular">{Number.isFinite(recovery) ? recovery.toFixed(2) : "∞"}</p>
+              <p className="mt-1 text-xs text-muted-foreground">Net profit divided by max drawdown</p>
+            </div>
+            <div>
+              <p className="text-xs text-muted-foreground">Total net R</p>
+              <p className={cn("mt-1 font-mono text-xl font-semibold tabular", toneClass(signTone(m.netR)))}>
+                {m.netR >= 0 ? "+" : ""}{m.netR.toFixed(2)}R
+              </p>
+              <p className="mt-1 text-xs text-muted-foreground">Sum of every trade’s R multiple</p>
+            </div>
+          </PanelBody>
+        </Panel>
+      )}
+    </Page>
   )
 }
 

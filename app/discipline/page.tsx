@@ -1,25 +1,17 @@
 "use client"
 
-import React from "react"
-
-import { useState } from "react"
+import React, { useState } from "react"
 import { DashboardLayout } from "@/components/dashboard/dashboard-layout"
 import { useDashboard } from "@/context/dashboard-context"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
-import {
-  Plus,
-  TrendingDown,
-  TrendingUp,
-  AlertCircle,
-  CheckCircle,
-  XCircle,
-  Brain,
-  BarChart3,
-  Calendar,
-  Award,
-} from "@/components/icons"
+import { Textarea } from "@/components/ui/textarea"
+import { Label } from "@/components/ui/label"
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog"
+import { Plus, TrendingDown, TrendingUp, AlertCircle, CheckCircle, XCircle, Brain, Calendar, Award, ShieldCheck } from "@/components/icons"
 import { getWinLossCounts, calculateWinRate } from "@/lib/trading-metrics"
+import { Page, PageHeader, Panel, PanelHeader, PanelBody, StatCard, EmptyState } from "@/components/kit"
+import { cn } from "@/lib/utils"
 
 interface DailyDiscipline {
   date: string
@@ -29,12 +21,24 @@ interface DailyDiscipline {
   violations: string[]
 }
 
+const todayISO = () => {
+  const d = new Date()
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`
+}
+
+const RULES = [
+  { title: "Follow your system strictly", detail: "Never deviate from your trading plan" },
+  { title: "Risk only what you can afford", detail: "Never exceed 2% risk per trade" },
+  { title: "Keep emotions in check", detail: "Don't let greed, fear, or frustration affect your decisions" },
+  { title: "Review daily", detail: "Analyze what went well and what didn't each day" },
+]
+
 export default function Discipline() {
   const { trades } = useDashboard()
   const [disciplineLog, setDisciplineLog] = useState<DailyDiscipline[]>([])
   const [showForm, setShowForm] = useState(false)
   const [formData, setFormData] = useState({
-    date: new Date().toISOString().split("T")[0],
+    date: todayISO(),
     followedRules: true,
     emotionalControl: 7,
     notes: "",
@@ -43,404 +47,321 @@ export default function Discipline() {
 
   const handleAddEntry = (e: React.FormEvent) => {
     e.preventDefault()
-    setDisciplineLog(prev => [formData as DailyDiscipline, ...prev])
-    setFormData({
-      date: new Date().toISOString().split("T")[0],
-      followedRules: true,
-      emotionalControl: 7,
-      notes: "",
-      violations: [],
-    })
+    setDisciplineLog((prev) => [formData as DailyDiscipline, ...prev])
+    setFormData({ date: todayISO(), followedRules: true, emotionalControl: 7, notes: "", violations: [] })
     setShowForm(false)
   }
 
-  // Calculate statistics
+  // Statistics
   const totalDays = disciplineLog.length
-  const daysFollowingRules = disciplineLog.filter(d => d.followedRules).length
+  const daysFollowingRules = disciplineLog.filter((d) => d.followedRules).length
   const disciplineRate = totalDays > 0 ? (daysFollowingRules / totalDays) * 100 : 0
   const avgEmotionalControl =
     totalDays > 0 ? Math.round(disciplineLog.reduce((sum, d) => sum + d.emotionalControl, 0) / totalDays) : 0
 
-  // Analyze emotional state vs trading results
+  // Emotional state vs trading results
   const emotionalAnalysis = (() => {
-    const high = trades.filter(t => t.emotionalState === "confident" || t.emotionalState === "focused")
-    const low = trades.filter(t => t.emotionalState === "anxious" || t.emotionalState === "frustrated")
+    const high = trades.filter((t) => t.emotionalState === "confident" || t.emotionalState === "focused")
+    const low = trades.filter((t) => t.emotionalState === "anxious" || t.emotionalState === "frustrated")
 
     const { wins: highWins, losses: highLosses } = getWinLossCounts(high)
     const { wins: lowWins, losses: lowLosses } = getWinLossCounts(low)
-    const highWinRate = calculateWinRate(highWins, highLosses)
-    const lowWinRate = calculateWinRate(lowWins, lowLosses)
 
     return {
-      highEmotionalWinRate: highWinRate,
-      lowEmotionalWinRate: lowWinRate,
+      highEmotionalWinRate: calculateWinRate(highWins, highLosses),
+      lowEmotionalWinRate: calculateWinRate(lowWins, lowLosses),
       highTradeCount: high.length,
       lowTradeCount: low.length,
     }
   })()
 
-  // Identify common mistakes
-  const mistakeTags = trades.flatMap(t => t.tags || [])
-  const mistakeCounts = mistakeTags.reduce(
-    (acc, tag) => {
-      acc[tag] = (acc[tag] || 0) + 1
-      return acc
-    },
-    {} as Record<string, number>
-  )
+  // Most common mistakes: use the mistake fields, not general trade tags
+  const mistakeCounts = trades
+    .flatMap((t) => [...(t.mistakeTags || []), ...(t.mistakes || [])])
+    .filter(Boolean)
+    .reduce(
+      (acc, tag) => {
+        acc[tag] = (acc[tag] || 0) + 1
+        return acc
+      },
+      {} as Record<string, number>
+    )
 
+  // Object.entries returns a fresh array, so sorting it is safe.
   const topMistakes = Object.entries(mistakeCounts)
     .sort(([, a], [, b]) => b - a)
     .slice(0, 5)
+  const maxMistake = topMistakes[0]?.[1] || 1
+
+  const emotionDelta = emotionalAnalysis.highEmotionalWinRate - emotionalAnalysis.lowEmotionalWinRate
 
   return (
     <DashboardLayout>
-      <div className="p-4 md:p-6 lg:p-8">
-        {/* Header */}
-        <div className="mb-8">
-          <div className="flex items-center justify-between">
-            <div>
-              <h1 className="text-3xl font-semibold tracking-tight">Trading Psychology</h1>
-              <p className="text-muted-foreground mt-1">
-                Track discipline, emotional control, and psychological patterns
-              </p>
-            </div>
-            <Button onClick={() => setShowForm(true)} className="gap-2">
-              <Plus className="w-4 h-4" />
-              <span className="hidden sm:inline">Log Day</span>
+      <Page>
+        <PageHeader
+          title="Discipline"
+          description="Track rule-following, emotional control and recurring mistakes"
+          actions={
+            <Button size="sm" onClick={() => setShowForm(true)}>
+              <Plus /> Log day
             </Button>
-          </div>
-        </div>
+          }
+        />
 
-        {/* Key Metrics */}
-        <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-8">
-          <div className="bg-card border border-border rounded-lg p-4">
-            <div className="flex items-center justify-between mb-2">
-              <p className="text-xs text-muted-foreground">Discipline Rate</p>
-              <Award className="w-4 h-4 text-yellow-500" />
-            </div>
-            <p className="text-2xl font-semibold">{disciplineRate.toFixed(0)}%</p>
-            <p className="text-xs text-muted-foreground mt-1">{daysFollowingRules} of {totalDays} days</p>
-          </div>
-
-          <div className="bg-card border border-border rounded-lg p-4">
-            <div className="flex items-center justify-between mb-2">
-              <p className="text-xs text-muted-foreground">Avg Emotional Control</p>
-              <Brain className="w-4 h-4 text-purple-500" />
-            </div>
-            <p className="text-2xl font-semibold">{avgEmotionalControl}/10</p>
-            <p className="text-xs text-muted-foreground mt-1">From daily logs</p>
-          </div>
-
-          <div className="bg-card border border-border rounded-lg p-4">
-            <div className="flex items-center justify-between mb-2">
-              <p className="text-xs text-muted-foreground">High Emotion Win Rate</p>
-              <TrendingUp className="w-4 h-4 text-green-500" />
-            </div>
-            <p className="text-2xl font-semibold">{emotionalAnalysis.highEmotionalWinRate.toFixed(1)}%</p>
-            <p className="text-xs text-muted-foreground mt-1">{emotionalAnalysis.highTradeCount} trades</p>
-          </div>
-
-          <div className="bg-card border border-border rounded-lg p-4">
-            <div className="flex items-center justify-between mb-2">
-              <p className="text-xs text-muted-foreground">Low Emotion Win Rate</p>
-              <TrendingDown className="w-4 h-4 text-red-500" />
-            </div>
-            <p className="text-2xl font-semibold">{emotionalAnalysis.lowEmotionalWinRate.toFixed(1)}%</p>
-            <p className="text-xs text-muted-foreground mt-1">{emotionalAnalysis.lowTradeCount} trades</p>
-          </div>
+        {/* Key metrics */}
+        <div className="mb-4 grid grid-cols-2 gap-3 md:mb-6 md:gap-4 xl:grid-cols-4">
+          <StatCard
+            label="Discipline rate"
+            value={`${disciplineRate.toFixed(0)}%`}
+            tone={totalDays ? (disciplineRate >= 70 ? "profit" : "loss") : "default"}
+            icon={Award}
+            sub={`${daysFollowingRules} of ${totalDays} days`}
+          />
+          <StatCard label="Avg emotional control" value={`${avgEmotionalControl}/10`} icon={Brain} sub="From daily logs" />
+          <StatCard
+            label="Win rate when focused"
+            value={`${emotionalAnalysis.highEmotionalWinRate.toFixed(1)}%`}
+            icon={TrendingUp}
+            sub={`${emotionalAnalysis.highTradeCount} trades`}
+          />
+          <StatCard
+            label="Win rate when anxious"
+            value={`${emotionalAnalysis.lowEmotionalWinRate.toFixed(1)}%`}
+            icon={TrendingDown}
+            sub={`${emotionalAnalysis.lowTradeCount} trades`}
+          />
         </div>
 
         {/* Insights */}
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-8">
-          {/* Emotional Impact */}
-          <div className="bg-card border border-border rounded-lg p-6">
-            <h2 className="text-lg font-semibold mb-4 flex items-center gap-2">
-              <Brain className="w-5 h-5" />
-              Emotional State Impact
-            </h2>
-            <p className="text-sm text-muted-foreground mb-4">
-              How emotional states affect your trading outcomes
-            </p>
-
-            <div className="space-y-4">
-              <div>
-                <div className="flex items-center justify-between mb-2">
-                  <span className="text-sm font-medium">Focused/Confident</span>
-                  <span className="text-sm font-semibold text-green-400">
-                    {emotionalAnalysis.highEmotionalWinRate.toFixed(1)}%
-                  </span>
-                </div>
-                <div className="w-full h-2 bg-background rounded-full overflow-hidden">
-                  <div
-                    className="h-full bg-green-500"
-                    style={{ width: `${emotionalAnalysis.highEmotionalWinRate}%` }}
-                  />
-                </div>
-              </div>
-
-              <div>
-                <div className="flex items-center justify-between mb-2">
-                  <span className="text-sm font-medium">Anxious/Frustrated</span>
-                  <span className="text-sm font-semibold text-red-400">
-                    {emotionalAnalysis.lowEmotionalWinRate.toFixed(1)}%
-                  </span>
-                </div>
-                <div className="w-full h-2 bg-background rounded-full overflow-hidden">
-                  <div
-                    className="h-full bg-red-500"
-                    style={{ width: `${emotionalAnalysis.lowEmotionalWinRate}%` }}
-                  />
-                </div>
-              </div>
-
-              <div className="mt-6 p-4 bg-background/50 rounded border border-border/50">
-                <p className="text-xs text-muted-foreground">
-                  💡{" "}
-                  {emotionalAnalysis.highEmotionalWinRate > emotionalAnalysis.lowEmotionalWinRate
-                    ? `Your trading performs ${(emotionalAnalysis.highEmotionalWinRate - emotionalAnalysis.lowEmotionalWinRate).toFixed(1)}% better when you're focused and confident. Prioritize emotional control.`
-                    : `Your performance is similar regardless of emotional state. Focus on other factors.`}
-                </p>
-              </div>
-            </div>
-          </div>
-
-          {/* Common Mistakes */}
-          <div className="bg-card border border-border rounded-lg p-6">
-            <h2 className="text-lg font-semibold mb-4 flex items-center gap-2">
-              <AlertCircle className="w-5 h-5" />
-              Common Mistakes
-            </h2>
-            <p className="text-sm text-muted-foreground mb-4">
-              Most frequent trading mistakes and violations
-            </p>
-
-            {topMistakes.length > 0 ? (
-              <div className="space-y-3">
-                {topMistakes.map(([mistake, count]) => (
-                  <div key={mistake} className="flex items-center justify-between p-3 bg-background/50 rounded">
-                    <div>
-                      <p className="text-sm font-medium capitalize">{mistake.replace(/[-_]/g, " ")}</p>
-                      <p className="text-xs text-muted-foreground">{count} occurrences</p>
-                    </div>
-                    <div className="text-right">
-                      <p className="text-lg font-semibold">{count}</p>
-                    </div>
+        <div className="mb-4 grid grid-cols-1 gap-4 md:mb-6 md:gap-6 lg:grid-cols-2">
+          <Panel>
+            <PanelHeader title="Emotional state impact" description="How your state affects outcomes" icon={Brain} />
+            <PanelBody className="space-y-5">
+              {[
+                { label: "Focused / confident", rate: emotionalAnalysis.highEmotionalWinRate, bar: "bg-profit", text: "text-profit" },
+                { label: "Anxious / frustrated", rate: emotionalAnalysis.lowEmotionalWinRate, bar: "bg-loss", text: "text-loss" },
+              ].map((row) => (
+                <div key={row.label}>
+                  <div className="mb-2 flex items-center justify-between">
+                    <span className="text-sm">{row.label}</span>
+                    <span className={cn("font-mono text-sm font-semibold tabular", row.text)}>{row.rate.toFixed(1)}%</span>
                   </div>
-                ))}
-              </div>
-            ) : (
-              <div className="text-center py-8">
-                <CheckCircle className="w-12 h-12 text-muted-foreground mx-auto mb-2 opacity-50" />
-                <p className="text-sm text-muted-foreground">No tagged mistakes found</p>
-              </div>
-            )}
-
-            <div className="mt-6 p-4 bg-background/50 rounded border border-border/50">
-              <p className="text-xs text-muted-foreground">
-                💡 Focus your discipline efforts on eliminating the top mistakes
-              </p>
-            </div>
-          </div>
-        </div>
-
-        {/* Discipline Log */}
-        <div className="bg-card border border-border rounded-lg overflow-hidden">
-          <div className="p-6 border-b border-border">
-            <h2 className="text-lg font-semibold flex items-center gap-2">
-              <Calendar className="w-5 h-5" />
-              Daily Discipline Log
-            </h2>
-          </div>
-
-          {disciplineLog.length > 0 ? (
-            <div className="divide-y divide-border">
-              {disciplineLog.map((entry, i) => (
-                <div key={i} className="p-4 hover:bg-background/50 transition-colors">
-                  <div className="flex items-start justify-between mb-2">
-                    <div>
-                      <p className="font-medium">{new Date(entry.date).toLocaleDateString()}</p>
-                      <p className="text-sm text-muted-foreground">
-                        Emotional Control: {entry.emotionalControl}/10
-                      </p>
-                    </div>
-                    <div>
-                      {entry.followedRules ? (
-                        <div className="flex items-center gap-2 text-green-400">
-                          <CheckCircle className="w-5 h-5" />
-                          <span className="text-sm font-medium">Rules Followed</span>
-                        </div>
-                      ) : (
-                        <div className="flex items-center gap-2 text-red-400">
-                          <XCircle className="w-5 h-5" />
-                          <span className="text-sm font-medium">Rules Broken</span>
-                        </div>
-                      )}
-                    </div>
+                  <div className="h-2 w-full overflow-hidden rounded-full bg-secondary">
+                    <div className={cn("h-full rounded-full", row.bar)} style={{ width: `${row.rate}%` }} />
                   </div>
-
-                  {entry.violations.length > 0 && (
-                    <div className="mb-2">
-                      <p className="text-xs font-medium text-muted-foreground mb-1">Violations:</p>
-                      <div className="flex flex-wrap gap-1">
-                        {entry.violations.map((violation, j) => (
-                          <span key={j} className="px-2 py-1 rounded text-xs bg-red-500/20 text-red-400 border border-red-500/30">
-                            {violation}
-                          </span>
-                        ))}
-                      </div>
-                    </div>
-                  )}
-
-                  {entry.notes && <p className="text-sm text-muted-foreground italic">{entry.notes}</p>}
                 </div>
               ))}
-            </div>
-          ) : (
-            <div className="p-12 text-center">
-              <Calendar className="w-12 h-12 text-muted-foreground mx-auto mb-4 opacity-50" />
-              <p className="text-muted-foreground mb-4">No daily logs yet. Start tracking your discipline!</p>
-              <Button onClick={() => setShowForm(true)} className="gap-2">
-                <Plus className="w-4 h-4" />
-                Log Today
-              </Button>
-            </div>
-          )}
+
+              <p className="rounded-lg border border-border bg-secondary/40 p-3 text-sm text-muted-foreground">
+                {emotionalAnalysis.highTradeCount + emotionalAnalysis.lowTradeCount === 0
+                  ? "Record your emotional state on trades to see how it affects your results."
+                  : emotionDelta > 0
+                    ? `You win ${emotionDelta.toFixed(1)} percentage points more often when focused and confident. Prioritize emotional control.`
+                    : "Your win rate is similar regardless of emotional state. Focus on other factors."}
+              </p>
+            </PanelBody>
+          </Panel>
+
+          <Panel>
+            <PanelHeader title="Common mistakes" description="Most frequent tagged mistakes" icon={AlertCircle} />
+            <PanelBody>
+              {topMistakes.length > 0 ? (
+                <div className="space-y-3">
+                  {topMistakes.map(([mistake, count]) => (
+                    <div key={mistake}>
+                      <div className="mb-1.5 flex items-center justify-between gap-3">
+                        <span className="truncate text-sm capitalize">{mistake.replace(/[-_]/g, " ")}</span>
+                        <span className="font-mono text-sm tabular text-muted-foreground">
+                          {count}×
+                        </span>
+                      </div>
+                      <div className="h-1.5 w-full overflow-hidden rounded-full bg-secondary">
+                        <div className="h-full rounded-full bg-loss/70" style={{ width: `${(count / maxMistake) * 100}%` }} />
+                      </div>
+                    </div>
+                  ))}
+                  <p className="pt-2 text-xs text-muted-foreground">Focus your discipline efforts on eliminating the top mistakes.</p>
+                </div>
+              ) : (
+                <EmptyState
+                  icon={CheckCircle}
+                  title="No tagged mistakes"
+                  description="Tag mistakes when journaling trades and the most frequent ones will show here."
+                  className="py-8"
+                />
+              )}
+            </PanelBody>
+          </Panel>
         </div>
 
-        {/* Trading Rules Section */}
-        <div className="mt-8 bg-card border border-border rounded-lg p-6">
-          <h2 className="text-lg font-semibold mb-4">Your Trading Rules</h2>
-          <div className="space-y-3 mb-6">
-            <div className="flex items-start gap-3 p-3 bg-background/50 rounded">
-              <CheckCircle className="w-5 h-5 text-green-500 flex-shrink-0 mt-0.5" />
-              <div>
-                <p className="font-medium">Follow your system strictly</p>
-                <p className="text-sm text-muted-foreground">Never deviate from your trading plan</p>
-              </div>
-            </div>
-            <div className="flex items-start gap-3 p-3 bg-background/50 rounded">
-              <CheckCircle className="w-5 h-5 text-green-500 flex-shrink-0 mt-0.5" />
-              <div>
-                <p className="font-medium">Risk only what you can afford</p>
-                <p className="text-sm text-muted-foreground">Never exceed 2% risk per trade</p>
-              </div>
-            </div>
-            <div className="flex items-start gap-3 p-3 bg-background/50 rounded">
-              <CheckCircle className="w-5 h-5 text-green-500 flex-shrink-0 mt-0.5" />
-              <div>
-                <p className="font-medium">Keep emotions in check</p>
-                <p className="text-sm text-muted-foreground">Don't let greed, fear, or frustration affect your decisions</p>
-              </div>
-            </div>
-            <div className="flex items-start gap-3 p-3 bg-background/50 rounded">
-              <CheckCircle className="w-5 h-5 text-green-500 flex-shrink-0 mt-0.5" />
-              <div>
-                <p className="font-medium">Review daily</p>
-                <p className="text-sm text-muted-foreground">Analyze what went well and what didn't each day</p>
-              </div>
-            </div>
-          </div>
+        {/* Daily log + rules */}
+        <div className="grid grid-cols-1 gap-4 md:gap-6 lg:grid-cols-3">
+          <Panel className="lg:col-span-2">
+            <PanelHeader
+              title="Daily discipline log"
+              description={totalDays ? `${totalDays} ${totalDays === 1 ? "entry" : "entries"} this session` : undefined}
+              icon={Calendar}
+            />
+            <PanelBody className="pt-3">
+              {disciplineLog.length > 0 ? (
+                <div className="divide-y divide-border">
+                  {disciplineLog.map((entry, i) => (
+                    <div key={i} className="py-3 first:pt-0 last:pb-0">
+                      <div className="flex items-start justify-between gap-3">
+                        <div>
+                          <p className="text-sm font-medium">
+                            {new Date(`${entry.date}T00:00`).toLocaleDateString(undefined, {
+                              weekday: "short",
+                              month: "short",
+                              day: "numeric",
+                              year: "numeric",
+                            })}
+                          </p>
+                          <p className="text-xs text-muted-foreground">
+                            Emotional control <span className="font-mono tabular">{entry.emotionalControl}/10</span>
+                          </p>
+                        </div>
+                        {entry.followedRules ? (
+                          <span className="inline-flex items-center gap-1.5 rounded-md bg-profit/10 px-2 py-1 text-xs font-medium text-profit">
+                            <CheckCircle className="size-3.5" /> Rules followed
+                          </span>
+                        ) : (
+                          <span className="inline-flex items-center gap-1.5 rounded-md bg-loss/10 px-2 py-1 text-xs font-medium text-loss">
+                            <XCircle className="size-3.5" /> Rules broken
+                          </span>
+                        )}
+                      </div>
+
+                      {entry.violations.length > 0 && (
+                        <div className="mt-2 flex flex-wrap gap-1">
+                          {entry.violations.map((violation, j) => (
+                            <span key={j} className="rounded-md border border-loss/20 bg-loss/10 px-2 py-0.5 text-xs text-loss">
+                              {violation}
+                            </span>
+                          ))}
+                        </div>
+                      )}
+
+                      {entry.notes && <p className="mt-2 text-sm text-muted-foreground">{entry.notes}</p>}
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <EmptyState
+                  icon={Calendar}
+                  title="No daily logs yet"
+                  description="Log each trading day to track how consistently you follow your rules."
+                  action={
+                    <Button size="sm" onClick={() => setShowForm(true)}>
+                      <Plus /> Log today
+                    </Button>
+                  }
+                />
+              )}
+            </PanelBody>
+          </Panel>
+
+          <Panel>
+            <PanelHeader title="Your trading rules" icon={ShieldCheck} />
+            <PanelBody className="space-y-2">
+              {RULES.map((rule) => (
+                <div key={rule.title} className="flex items-start gap-3 rounded-lg border border-border bg-background/40 p-3">
+                  <CheckCircle className="mt-0.5 size-4 shrink-0 text-brand" />
+                  <div>
+                    <p className="text-sm font-medium">{rule.title}</p>
+                    <p className="text-xs text-muted-foreground">{rule.detail}</p>
+                  </div>
+                </div>
+              ))}
+            </PanelBody>
+          </Panel>
         </div>
 
-        {/* Form Modal */}
-        {showForm && (
-          <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-            <div className="bg-card border border-border rounded-lg max-w-2xl w-full max-h-[90vh] overflow-y-auto">
-              <div className="sticky top-0 bg-card border-b border-border p-6 flex items-center justify-between">
-                <h2 className="text-xl font-semibold">Log Today's Discipline</h2>
-                <button
-                  onClick={() => setShowForm(false)}
-                  className="p-1 hover:bg-background rounded transition-colors"
-                >
-                  <XCircle className="w-5 h-5" />
-                </button>
+        {/* Log form */}
+        <Dialog open={showForm} onOpenChange={setShowForm}>
+          <DialogContent className="sm:max-w-lg">
+            <DialogHeader>
+              <DialogTitle>Log a trading day</DialogTitle>
+              <DialogDescription>Be honest — the value is in the pattern over time.</DialogDescription>
+            </DialogHeader>
+
+            <form onSubmit={handleAddEntry} className="space-y-5">
+              <div className="space-y-1.5">
+                <Label htmlFor="disc-date">Date</Label>
+                <Input
+                  id="disc-date"
+                  type="date"
+                  value={formData.date}
+                  onChange={(e) => setFormData((prev) => ({ ...prev, date: e.target.value }))}
+                  required
+                />
               </div>
 
-              <form onSubmit={handleAddEntry} className="p-6 space-y-6">
-                <div>
-                  <label className="text-sm font-medium">Date</label>
-                  <Input
-                    type="date"
-                    value={formData.date}
-                    onChange={(e) => setFormData(prev => ({ ...prev, date: e.target.value }))}
-                    className="mt-2"
-                    required
-                  />
+              <div className="space-y-2">
+                <Label>Did you follow your trading rules?</Label>
+                <div className="grid grid-cols-2 gap-2">
+                  {[
+                    { v: true, label: "Yes, all rules" },
+                    { v: false, label: "No, broke some" },
+                  ].map((opt) => (
+                    <button
+                      key={String(opt.v)}
+                      type="button"
+                      onClick={() => setFormData((prev) => ({ ...prev, followedRules: opt.v }))}
+                      className={cn(
+                        "rounded-md border px-3 py-2 text-sm transition-colors",
+                        formData.followedRules === opt.v
+                          ? opt.v
+                            ? "border-profit/40 bg-profit/10 text-profit"
+                            : "border-loss/40 bg-loss/10 text-loss"
+                          : "border-input text-muted-foreground hover:bg-accent hover:text-foreground"
+                      )}
+                    >
+                      {opt.label}
+                    </button>
+                  ))}
                 </div>
+              </div>
 
-                <div>
-                  <label className="text-sm font-medium">Did you follow your trading rules?</label>
-                  <div className="mt-2 flex gap-4">
-                    <label className="flex items-center gap-2 cursor-pointer">
-                      <input
-                        type="radio"
-                        name="rules"
-                        checked={formData.followedRules}
-                        onChange={() => setFormData(prev => ({ ...prev, followedRules: true }))}
-                        className="w-4 h-4"
-                      />
-                      <span className="text-sm">Yes, I followed all rules</span>
-                    </label>
-                    <label className="flex items-center gap-2 cursor-pointer">
-                      <input
-                        type="radio"
-                        name="rules"
-                        checked={!formData.followedRules}
-                        onChange={() => setFormData(prev => ({ ...prev, followedRules: false }))}
-                        className="w-4 h-4"
-                      />
-                      <span className="text-sm">No, I broke some rules</span>
-                    </label>
-                  </div>
+              <div className="space-y-2">
+                <div className="flex items-center justify-between">
+                  <Label htmlFor="disc-emotion">Emotional control</Label>
+                  <span className="font-mono text-sm font-semibold tabular">{formData.emotionalControl}/10</span>
                 </div>
+                <input
+                  id="disc-emotion"
+                  type="range"
+                  min="1"
+                  max="10"
+                  value={formData.emotionalControl}
+                  onChange={(e) => setFormData((prev) => ({ ...prev, emotionalControl: parseInt(e.target.value) }))}
+                  className="w-full accent-brand"
+                />
+                <p className="text-xs text-muted-foreground">1 = completely overwhelmed, 10 = perfect control</p>
+              </div>
 
-                <div>
-                  <label className="text-sm font-medium">Emotional Control (1-10)</label>
-                  <div className="mt-2 flex items-center gap-4">
-                    <input
-                      type="range"
-                      min="1"
-                      max="10"
-                      value={formData.emotionalControl}
-                      onChange={(e) =>
-                        setFormData(prev => ({ ...prev, emotionalControl: parseInt(e.target.value) }))
-                      }
-                      className="flex-1"
-                    />
-                    <span className="text-lg font-semibold w-8 text-center">
-                      {formData.emotionalControl}
-                    </span>
-                  </div>
-                  <p className="text-xs text-muted-foreground mt-2">
-                    1 = Completely overwhelmed, 10 = Perfect control
-                  </p>
-                </div>
+              <div className="space-y-1.5">
+                <Label htmlFor="disc-notes">Notes</Label>
+                <Textarea
+                  id="disc-notes"
+                  value={formData.notes}
+                  onChange={(e) => setFormData((prev) => ({ ...prev, notes: e.target.value }))}
+                  placeholder="How did you feel today? Any challenges or wins?"
+                  rows={3}
+                  className="resize-none"
+                />
+              </div>
 
-                <div>
-                  <label className="text-sm font-medium">Notes</label>
-                  <textarea
-                    value={formData.notes}
-                    onChange={(e) => setFormData(prev => ({ ...prev, notes: e.target.value }))}
-                    placeholder="How did you feel today? Any challenges or wins?"
-                    className="w-full mt-2 px-3 py-2 rounded-md border border-input bg-background resize-none"
-                    rows={3}
-                  />
-                </div>
-
-                <div className="flex gap-3 pt-4 border-t border-border">
-                  <Button variant="outline" onClick={() => setShowForm(false)}>
-                    Cancel
-                  </Button>
-                  <Button type="submit" className="flex-1">
-                    Save Entry
-                  </Button>
-                </div>
-              </form>
-            </div>
-          </div>
-        )}
-      </div>
+              <DialogFooter>
+                <Button type="button" variant="outline" onClick={() => setShowForm(false)}>
+                  Cancel
+                </Button>
+                <Button type="submit">Save entry</Button>
+              </DialogFooter>
+            </form>
+          </DialogContent>
+        </Dialog>
+      </Page>
     </DashboardLayout>
   )
 }

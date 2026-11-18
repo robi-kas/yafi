@@ -1,49 +1,51 @@
 "use client"
 
 import React, { useState, useCallback, useRef } from "react"
+import Link from "next/link"
 import { DashboardLayout } from "@/components/dashboard/dashboard-layout"
 import { useDashboard } from "@/context/dashboard-context"
 import { Button } from "@/components/ui/button"
 import { cn } from "@/lib/utils"
 import {
   Upload, Check, ArrowRight, FileText, Table2, Image,
-  X, ChevronDown, TrendingUp, TrendingDown, Zap, RefreshCw,
-  ShieldCheck, AlertCircle, Loader2, CheckCircle2, FileUp
+  X, TrendingUp, TrendingDown, RefreshCw,
+  AlertCircle, Loader2, CheckCircle2, FileUp, BookOpen
 } from "@/components/icons"
 import {
   parseTradeFile, ParsedTrade, ImportFormat
 } from "@/lib/trade-import-parser"
+import { Page, PageHeader, Panel, PanelHeader, PanelBody, StatCard, DirectionBadge, formatMoney, pnlTone } from "@/components/kit"
 
 // Broker configs
 const BROKERS = [
   {
     id: "mt5", name: "MetaTrader 5", logo: "MT5",
-    color: "from-blue-600 to-blue-800", supported: ["HTML Statement", "CSV"],
+    supported: ["HTML Statement", "CSV"],
     desc: "Export from MT5: Account > Reports > Full Report",
   },
   {
     id: "mt4", name: "MetaTrader 4", logo: "MT4",
-    color: "from-indigo-600 to-indigo-800", supported: ["HTML Statement", "CSV"],
+    supported: ["HTML Statement", "CSV"],
     desc: "Export from MT4: History > Account History > Save as Report",
   },
   {
     id: "exness", name: "Exness", logo: "EX",
-    color: "from-emerald-600 to-emerald-800", supported: ["CSV", "HTML"],
+    supported: ["CSV", "HTML"],
     desc: "Download from Exness Personal Area > History",
   },
   {
     id: "ftmo", name: "FTMO", logo: "FT",
-    color: "from-orange-600 to-orange-800", supported: ["CSV", "HTML"],
+    supported: ["CSV", "HTML"],
     desc: "Download from FTMO Client Area > Trading Account > History",
   },
   {
     id: "ictm", name: "IC Markets", logo: "IC",
-    color: "from-sky-600 to-sky-800", supported: ["CSV"],
+    supported: ["CSV"],
     desc: "Download from Client Portal > Trade History",
   },
   {
     id: "generic", name: "Generic CSV", logo: "CSV",
-    color: "from-slate-600 to-slate-800", supported: ["CSV"],
+    supported: ["CSV"],
     desc: "Any CSV with columns: symbol, type, volume, open/close price, profit",
   },
 ]
@@ -66,30 +68,25 @@ function BrokerCard({ broker, selected, onSelect }: {
     <button
       onClick={onSelect}
       className={cn(
-        "relative flex flex-col gap-3 p-4 rounded-xl border-2 text-left transition-all duration-200 hover:scale-[1.02] group",
-        selected
-          ? "border-emerald-500 bg-emerald-500/10 shadow-lg shadow-emerald-500/10"
-          : "border-border/50 bg-card hover:border-border hover:bg-muted/30"
+        "relative flex flex-col gap-3 rounded-xl border bg-card p-4 text-left transition-colors",
+        selected ? "border-brand/60 bg-brand-soft" : "border-border hover:border-foreground/20 hover:bg-accent/40"
       )}
     >
       {selected && (
-        <div className="absolute top-2.5 right-2.5 w-5 h-5 bg-emerald-500 rounded-full flex items-center justify-center">
-          <Check className="w-3 h-3 text-white" />
-        </div>
+        <span className="absolute right-3 top-3 flex size-5 items-center justify-center rounded-full bg-brand text-primary-foreground">
+          <Check className="size-3" />
+        </span>
       )}
-      <div className={cn(
-        "w-10 h-10 rounded-lg bg-gradient-to-br flex items-center justify-center text-white font-black text-sm font-mono",
-        broker.color
-      )}>
+      <span className="flex size-10 items-center justify-center rounded-lg bg-secondary font-mono text-xs font-semibold text-foreground">
         {broker.logo}
-      </div>
+      </span>
       <div>
-        <p className="text-sm font-semibold">{broker.name}</p>
-        <p className="text-[10px] text-muted-foreground mt-0.5">{broker.desc}</p>
+        <p className="text-sm font-medium">{broker.name}</p>
+        <p className="mt-0.5 text-xs text-muted-foreground">{broker.desc}</p>
       </div>
       <div className="flex flex-wrap gap-1">
         {broker.supported.map(fmt => (
-          <span key={fmt} className="text-[9px] font-mono bg-muted px-1.5 py-0.5 rounded text-muted-foreground uppercase tracking-wider">
+          <span key={fmt} className="rounded-md bg-secondary px-1.5 py-0.5 text-[11px] text-muted-foreground">
             {fmt}
           </span>
         ))}
@@ -98,52 +95,42 @@ function BrokerCard({ broker, selected, onSelect }: {
   )
 }
 
+function Checkbox({ checked, partial }: { checked: boolean; partial?: boolean }) {
+  return (
+    <span
+      className={cn(
+        "flex size-4 items-center justify-center rounded border transition-colors",
+        checked || partial ? "border-brand bg-brand text-primary-foreground" : "border-input"
+      )}
+    >
+      {checked ? <Check className="size-3" /> : partial ? <span className="h-0.5 w-2 rounded bg-current" /> : null}
+    </span>
+  )
+}
+
 function TradeRow({ trade, selected, onToggle }: {
   trade: ParsedTrade & { _id: string }, selected: boolean, onToggle: () => void
 }) {
-  const isWin = trade.result === "win"
-  const isLoss = trade.result === "loss"
+  const pnl = trade.profitLoss
   return (
     <tr
       className={cn(
-        "border-b border-border/30 text-xs transition-colors cursor-pointer select-none",
-        selected ? "bg-emerald-500/5" : "hover:bg-muted/30",
-        !selected && "opacity-60"
+        "cursor-pointer select-none border-t border-border text-sm transition-colors hover:bg-accent/40",
+        !selected && "opacity-50"
       )}
       onClick={onToggle}
     >
-      <td className="px-3 py-2.5">
-        <div className={cn(
-          "w-4 h-4 rounded border-2 flex items-center justify-center transition-all",
-          selected ? "border-emerald-500 bg-emerald-500" : "border-border"
-        )}>
-          {selected && <Check className="w-2.5 h-2.5 text-white" />}
-        </div>
+      <td className="px-3 py-2.5"><Checkbox checked={selected} /></td>
+      <td className="px-3 py-2.5 font-medium">{trade.symbol}</td>
+      <td className="px-3 py-2.5"><DirectionBadge direction={trade.direction} /></td>
+      <td className="px-3 py-2.5 font-mono tabular text-muted-foreground">{trade.lotSize}</td>
+      <td className="hidden px-3 py-2.5 font-mono tabular text-muted-foreground md:table-cell">{trade.entryPrice}</td>
+      <td className="hidden px-3 py-2.5 font-mono tabular text-muted-foreground md:table-cell">{trade.exitPrice || "—"}</td>
+      <td className={cn("px-3 py-2.5 text-right font-mono tabular", pnl === undefined ? "text-muted-foreground" : pnl > 0 ? "text-profit" : pnl < 0 ? "text-loss" : "")}>
+        {pnl !== undefined ? formatMoney(pnl, { sign: true }) : "—"}
       </td>
-      <td className="px-3 py-2.5 font-mono font-semibold text-foreground">{trade.symbol}</td>
-      <td className="px-3 py-2.5">
-        <span className={cn(
-          "px-1.5 py-0.5 rounded text-[10px] font-bold uppercase",
-          trade.direction === "buy"
-            ? "bg-emerald-500/10 text-emerald-600 dark:text-emerald-400"
-            : "bg-red-500/10 text-red-600 dark:text-red-400"
-        )}>
-          {trade.direction}
-        </span>
-      </td>
-      <td className="px-3 py-2.5 font-mono text-muted-foreground">{trade.lotSize}</td>
-      <td className="px-3 py-2.5 font-mono text-muted-foreground">{trade.entryPrice}</td>
-      <td className="px-3 py-2.5 font-mono text-muted-foreground">{trade.exitPrice || "—"}</td>
-      <td className={cn(
-        "px-3 py-2.5 font-mono font-bold",
-        isWin ? "text-emerald-600 dark:text-emerald-400" : isLoss ? "text-red-600 dark:text-red-400" : "text-muted-foreground"
-      )}>
-        {trade.profitLoss !== undefined
-          ? `${trade.profitLoss >= 0 ? "+" : ""}$${trade.profitLoss.toFixed(2)}`
-          : "—"}
-      </td>
-      <td className="px-3 py-2.5 text-muted-foreground font-mono">
-        {new Date(trade.entryTime).toLocaleDateString()}
+      <td className="hidden px-3 py-2.5 text-muted-foreground sm:table-cell">
+        {new Date(trade.entryTime).toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric" })}
       </td>
     </tr>
   )
@@ -302,171 +289,157 @@ export default function ImportPage() {
   }
 
   const STEPS: { key: Step; label: string }[] = [
-    { key: "broker", label: "Select Broker" },
-    { key: "upload", label: "Upload File" },
-    { key: "review", label: "Review Trades" },
+    { key: "broker", label: "Choose source" },
+    { key: "upload", label: "Upload file" },
+    { key: "review", label: "Review trades" },
     { key: "complete", label: "Done" },
   ]
 
   const stepIndex = STEPS.findIndex(s => s.key === step)
+  const selectedPL = parsedTrades.filter(t => selectedIds.has(t._id)).reduce((s, t) => s + (t.profitLoss || 0), 0)
+  const broker = BROKERS.find(b => b.id === selectedBroker)
 
   return (
     <DashboardLayout>
-      <div className="p-4 md:p-6 lg:p-8 max-w-6xl mx-auto">
-        {/* Header */}
-        <div className="mb-8">
-          <div className="flex items-center gap-3 mb-2">
-            <div className="p-2 bg-emerald-500/10 rounded-lg">
-              <FileUp className="w-5 h-5 text-emerald-500" />
-            </div>
-            <div>
-              <h1 className="text-2xl font-bold tracking-tight">Trade Import Hub</h1>
-              <p className="text-sm text-muted-foreground">Import your broker reports, CSVs, or log trades manually</p>
-            </div>
-          </div>
-        </div>
+      <Page className="max-w-6xl md:mx-0">
+        <PageHeader
+          title="Import"
+          description="Bring in trades from broker reports and CSV files"
+          actions={step !== "broker" && step !== "complete" ? (
+            <Button variant="ghost" size="sm" onClick={reset} disabled={isImporting}>
+              <X /> Start over
+            </Button>
+          ) : undefined}
+        />
 
-        {/* Progress Bar */}
-        <div className="flex items-center gap-2 mb-8">
+        {/* Steps */}
+        <ol className="mb-6 flex items-center gap-2 md:mb-8">
           {STEPS.map((s, i) => (
             <React.Fragment key={s.key}>
-              <div className={cn(
-                "flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs font-mono font-bold transition-all",
-                i < stepIndex ? "text-emerald-600 dark:text-emerald-400" :
-                  i === stepIndex ? "bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/30" :
-                    "text-muted-foreground/50"
+              <li className={cn(
+                "flex items-center gap-2 text-sm",
+                i === stepIndex ? "text-foreground" : i < stepIndex ? "text-muted-foreground" : "text-muted-foreground/50"
               )}>
-                <div className={cn(
-                  "w-5 h-5 rounded-full flex items-center justify-center text-[10px] font-black",
-                  i < stepIndex ? "bg-emerald-500 text-white" :
-                    i === stepIndex ? "bg-emerald-500/20 text-emerald-600 dark:text-emerald-400 border border-emerald-500/40" :
-                      "bg-muted text-muted-foreground/40"
+                <span className={cn(
+                  "flex size-6 items-center justify-center rounded-full text-xs font-medium tabular",
+                  i < stepIndex ? "bg-brand text-primary-foreground" :
+                    i === stepIndex ? "border border-brand text-brand" : "border border-border"
                 )}>
-                  {i < stepIndex ? <Check className="w-2.5 h-2.5" /> : i + 1}
-                </div>
-                <span className="hidden sm:inline">{s.label}</span>
-              </div>
+                  {i < stepIndex ? <Check className="size-3.5" /> : i + 1}
+                </span>
+                <span className="hidden font-medium sm:inline">{s.label}</span>
+              </li>
               {i < STEPS.length - 1 && (
-                <div className={cn(
-                  "flex-1 h-px",
-                  i < stepIndex ? "bg-emerald-500/40" : "bg-border/30"
-                )} />
+                <li aria-hidden className={cn("h-px flex-1", i < stepIndex ? "bg-brand/50" : "bg-border")} />
               )}
             </React.Fragment>
           ))}
-        </div>
+        </ol>
 
-        {/* STEP 1: Broker Selection */}
+        {/* STEP 1: Source */}
         {step === "broker" && (
           <div className="space-y-6">
-            <div className="flex gap-3 mb-4">
-              <Button
-                variant={mode === "report" ? "default" : "outline"}
-                size="sm"
-                onClick={() => setMode("report")}
-                className={mode === "report" ? "bg-emerald-600 hover:bg-emerald-700 text-white" : ""}
-              >
-                <FileText className="w-4 h-4 mr-2" />
-                Broker Report
-              </Button>
-              <Button
-                variant={mode === "screenshot" ? "default" : "outline"}
-                size="sm"
-                onClick={() => setMode("screenshot")}
-                className={mode === "screenshot" ? "bg-emerald-600 hover:bg-emerald-700 text-white" : ""}
-              >
-                <Image className="w-4 h-4 mr-2" />
-                Screenshot Entry
-              </Button>
+            <div className="inline-flex rounded-lg border border-border bg-card p-1">
+              {([
+                ["report", "Broker report", FileText],
+                ["screenshot", "Screenshots", Image],
+              ] as const).map(([key, label, Icon]) => (
+                <button
+                  key={key}
+                  onClick={() => setMode(key)}
+                  className={cn(
+                    "flex items-center gap-2 rounded-md px-3 py-1.5 text-sm font-medium transition-colors",
+                    mode === key ? "bg-accent text-foreground" : "text-muted-foreground hover:text-foreground"
+                  )}
+                >
+                  <Icon className="size-4" /> {label}
+                </button>
+              ))}
             </div>
 
             {mode === "report" ? (
               <>
                 <div>
-                  <p className="text-sm font-semibold mb-3 text-muted-foreground uppercase tracking-wider text-[10px] font-mono">Select Your Broker</p>
-                  <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
-                    {BROKERS.map(broker => (
+                  <p className="mb-3 text-sm font-medium">Select your broker</p>
+                  <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
+                    {BROKERS.map(b => (
                       <BrokerCard
-                        key={broker.id}
-                        broker={broker}
-                        selected={selectedBroker === broker.id}
-                        onSelect={() => setSelectedBroker(broker.id)}
+                        key={b.id}
+                        broker={b}
+                        selected={selectedBroker === b.id}
+                        onSelect={() => setSelectedBroker(b.id)}
                       />
                     ))}
                   </div>
                 </div>
-                <div className="flex justify-end pt-2">
-                  <Button
-                    disabled={!selectedBroker}
-                    onClick={() => setStep("upload")}
-                    className="bg-emerald-600 hover:bg-emerald-700 text-white gap-2 shadow-lg shadow-emerald-500/20"
-                  >
-                    Continue
-                    <ArrowRight className="w-4 h-4" />
+                <div className="flex justify-end">
+                  <Button disabled={!selectedBroker} onClick={() => setStep("upload")}>
+                    Continue <ArrowRight />
                   </Button>
                 </div>
               </>
             ) : (
-              // Screenshot entry mode
-              <div className="bg-card border border-border rounded-xl p-8 space-y-6">
-                <div
-                  className="border-2 border-dashed border-border rounded-xl p-12 text-center hover:border-emerald-500/40 transition-colors cursor-pointer"
-                  onClick={() => document.getElementById("screenshot-upload")?.click()}
-                >
-                  <input type="file" id="screenshot-upload" multiple accept="image/*" onChange={handleScreenshotUpload} className="hidden" />
-                  <div className="w-14 h-14 bg-emerald-500/10 rounded-xl flex items-center justify-center mx-auto mb-4">
-                    <Upload className="w-7 h-7 text-emerald-500" />
+              <Panel>
+                <PanelBody className="space-y-5">
+                  <div
+                    className="cursor-pointer rounded-xl border-2 border-dashed border-border p-10 text-center transition-colors hover:border-brand/50 hover:bg-accent/30"
+                    onClick={() => document.getElementById("screenshot-upload")?.click()}
+                  >
+                    <input type="file" id="screenshot-upload" multiple accept="image/*" onChange={handleScreenshotUpload} className="hidden" />
+                    <span className="mx-auto mb-3 flex size-12 items-center justify-center rounded-full bg-secondary text-muted-foreground">
+                      <Upload className="size-5" />
+                    </span>
+                    <p className="text-sm font-medium">Upload trade screenshots</p>
+                    <p className="mt-1 text-xs text-muted-foreground">PNG or JPG, up to 10 MB each</p>
                   </div>
-                  <p className="text-base font-semibold mb-1">Upload Trade Screenshots</p>
-                  <p className="text-xs text-muted-foreground">PNG, JPG (max 10MB each)</p>
-                </div>
-                {screenshots.length > 0 && (
-                  <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-                    {screenshots.map((s, i) => (
-                      <div key={i} className="relative group rounded-lg overflow-hidden border border-border">
-                        <img src={s} alt="" className="w-full h-24 object-cover" />
-                        <button
-                          onClick={() => setScreenshots(prev => prev.filter((_, idx) => idx !== i))}
-                          className="absolute top-1.5 right-1.5 p-1 bg-red-500/80 rounded-md opacity-0 group-hover:opacity-100 transition-opacity"
-                        >
-                          <X className="w-3 h-3 text-white" />
-                        </button>
-                      </div>
-                    ))}
-                  </div>
-                )}
-                {screenshots.length > 0 && (
-                  <Button onClick={() => window.location.href = "/journal"} className="w-full bg-emerald-600 hover:bg-emerald-700 text-white">
-                    Continue to Journal → Log Trade
-                  </Button>
-                )}
-              </div>
+                  {screenshots.length > 0 && (
+                    <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
+                      {screenshots.map((src, i) => (
+                        <div key={i} className="group relative overflow-hidden rounded-lg border border-border">
+                          <img src={src} alt="" className="h-24 w-full object-cover" />
+                          <button
+                            onClick={() => setScreenshots(prev => prev.filter((_, idx) => idx !== i))}
+                            className="absolute right-1.5 top-1.5 rounded-md bg-background/80 p-1 opacity-0 transition-opacity hover:text-destructive group-hover:opacity-100"
+                            aria-label="Remove screenshot"
+                          >
+                            <X className="size-3" />
+                          </button>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                  {screenshots.length > 0 && (
+                    <Button onClick={() => window.location.href = "/journal"} className="w-full">
+                      Continue to log the trade <ArrowRight />
+                    </Button>
+                  )}
+                </PanelBody>
+              </Panel>
             )}
           </div>
         )}
 
-        {/* STEP 2: File Upload */}
+        {/* STEP 2: Upload */}
         {step === "upload" && (
-          <div className="space-y-6">
-            {/* Instructions */}
-            {selectedBroker && (
-              <div className="p-4 bg-muted/30 rounded-xl border border-border/50">
-                <p className="text-xs text-muted-foreground font-mono uppercase tracking-wider mb-1">Export Instructions — {BROKERS.find(b => b.id === selectedBroker)?.name}</p>
-                <p className="text-sm text-foreground/80">{BROKERS.find(b => b.id === selectedBroker)?.desc}</p>
+          <div className="space-y-4">
+            {broker && (
+              <div className="flex items-start gap-3 rounded-xl border border-border bg-card p-4">
+                <span className="flex size-9 shrink-0 items-center justify-center rounded-lg bg-secondary font-mono text-xs font-semibold">{broker.logo}</span>
+                <div>
+                  <p className="text-sm font-medium">How to export from {broker.name}</p>
+                  <p className="text-sm text-muted-foreground">{broker.desc}</p>
+                </div>
               </div>
             )}
 
-            {/* Drop Zone */}
             <div
               onDragOver={(e) => { e.preventDefault(); setDragOver(true) }}
               onDragLeave={() => setDragOver(false)}
               onDrop={handleFileDrop}
               onClick={() => fileInputRef.current?.click()}
               className={cn(
-                "border-2 border-dashed rounded-2xl p-16 text-center cursor-pointer transition-all duration-200",
-                dragOver
-                  ? "border-emerald-500 bg-emerald-500/10 scale-[1.01]"
-                  : "border-border/60 bg-card hover:border-emerald-500/40 hover:bg-emerald-500/5"
+                "cursor-pointer rounded-xl border-2 border-dashed p-12 text-center transition-colors md:p-16",
+                dragOver ? "border-brand bg-brand-soft" : "border-border bg-card hover:border-brand/50 hover:bg-accent/30"
               )}
             >
               <input
@@ -476,106 +449,75 @@ export default function ImportPage() {
                 onChange={handleFileChange}
                 className="hidden"
               />
-              <div className="flex flex-col items-center gap-4">
-                <div className={cn(
-                  "w-16 h-16 rounded-2xl flex items-center justify-center transition-colors",
-                  dragOver ? "bg-emerald-500/20" : "bg-muted/50"
+              <div className="flex flex-col items-center gap-3">
+                <span className={cn(
+                  "flex size-14 items-center justify-center rounded-full transition-colors",
+                  dragOver ? "bg-brand/20 text-brand" : "bg-secondary text-muted-foreground"
                 )}>
-                  <Upload className={cn("w-8 h-8 transition-colors", dragOver ? "text-emerald-500" : "text-muted-foreground")} />
-                </div>
+                  <FileUp className="size-6" />
+                </span>
                 <div>
-                  <p className="text-lg font-semibold mb-1">
-                    {dragOver ? "Drop your file here..." : "Drag & drop your report here"}
-                  </p>
-                  <p className="text-sm text-muted-foreground">or <span className="text-emerald-600 dark:text-emerald-400 font-medium">click to browse</span></p>
+                  <p className="font-medium">{dragOver ? "Drop your file here" : "Drag and drop your report here"}</p>
+                  <p className="text-sm text-muted-foreground">or <span className="font-medium text-brand">click to browse</span></p>
                 </div>
-                <div className="flex gap-2 mt-2">
-                  {["HTML", "CSV", "HTM"].map(fmt => (
-                    <span key={fmt} className="px-2.5 py-1 bg-muted/70 rounded-md text-xs font-mono font-bold text-muted-foreground">
-                      .{fmt.toLowerCase()}
-                    </span>
+                <div className="mt-1 flex gap-1.5">
+                  {[".html", ".htm", ".csv"].map(fmt => (
+                    <span key={fmt} className="rounded-md bg-secondary px-2 py-0.5 font-mono text-xs text-muted-foreground">{fmt}</span>
                   ))}
                 </div>
               </div>
             </div>
 
             {fileError && (
-              <div className="flex items-start gap-3 p-4 bg-red-500/10 border border-red-500/20 rounded-xl text-red-600 dark:text-red-400">
-                <AlertCircle className="w-4 h-4 mt-0.5 shrink-0" />
-                <p className="text-sm">{fileError}</p>
+              <div className="flex items-start gap-2 rounded-lg border border-destructive/20 bg-destructive/10 p-3 text-sm text-destructive">
+                <AlertCircle className="mt-0.5 size-4 shrink-0" />
+                <p>{fileError}</p>
               </div>
             )}
 
-            <div className="flex gap-3">
-              <Button variant="outline" onClick={() => setStep("broker")}>Back</Button>
-            </div>
+            <Button variant="outline" onClick={() => setStep("broker")}>Back</Button>
           </div>
         )}
 
-        {/* STEP 3: Review Trades */}
+        {/* STEP 3: Review */}
         {step === "review" && (
           <div className="space-y-4">
-            {/* Summary Bar */}
-            <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-              {[
-                { label: "Detected", value: parsedTrades.length, icon: FileText, color: "text-blue-500" },
-                { label: "Selected", value: selectedIds.size, icon: CheckCircle2, color: "text-emerald-500" },
-                {
-                  label: "Est. P&L",
-                  value: `${parsedTrades.filter(t => selectedIds.has(t._id)).reduce((s, t) => s + (t.profitLoss || 0), 0) >= 0 ? "+" : ""}$${parsedTrades.filter(t => selectedIds.has(t._id)).reduce((s, t) => s + (t.profitLoss || 0), 0).toFixed(2)}`,
-                  icon: TrendingUp, color: "text-emerald-500"
-                },
-                {
-                  label: "Format",
-                  value: importFormat === "mt5-html" ? "MT5 HTML" : importFormat === "mt4-html" ? "MT4 HTML" : "CSV",
-                  icon: Table2, color: "text-muted-foreground"
-                },
-              ].map(stat => (
-                <div key={stat.label} className="bg-card border border-border/50 rounded-xl p-4 flex items-center gap-3">
-                  <div className="p-2 bg-muted/50 rounded-lg">
-                    <stat.icon className={cn("w-4 h-4", stat.color)} />
-                  </div>
-                  <div>
-                    <p className="text-[10px] font-mono text-muted-foreground uppercase tracking-wider">{stat.label}</p>
-                    <p className="text-sm font-bold font-mono">{stat.value}</p>
-                  </div>
-                </div>
-              ))}
+            <div className="grid grid-cols-2 gap-3 md:gap-4 xl:grid-cols-4">
+              <StatCard label="Detected" value={parsedTrades.length} icon={FileText} />
+              <StatCard label="Selected" value={selectedIds.size} icon={CheckCircle2} />
+              <StatCard
+                label="Selected P&L"
+                value={formatMoney(selectedPL, { sign: true })}
+                tone={pnlTone(selectedPL)}
+                icon={selectedPL >= 0 ? TrendingUp : TrendingDown}
+              />
+              <StatCard
+                label="Format"
+                value={<span className="font-sans text-lg">{importFormat === "mt5-html" ? "MT5 HTML" : importFormat === "mt4-html" ? "MT4 HTML" : "CSV"}</span>}
+                icon={Table2}
+              />
             </div>
 
-            {/* Trade Table */}
-            <div className="bg-card border border-border rounded-xl overflow-hidden">
-              <div className="flex items-center justify-between px-4 py-3 border-b border-border bg-muted/30">
-                <div className="flex items-center gap-3">
-                  <button
-                    onClick={toggleAll}
-                    className={cn(
-                      "w-4 h-4 rounded border-2 flex items-center justify-center transition-all",
-                      selectedIds.size === parsedTrades.length
-                        ? "border-emerald-500 bg-emerald-500"
-                        : "border-border hover:border-emerald-500/50"
-                    )}
-                  >
-                    {selectedIds.size === parsedTrades.length && <Check className="w-2.5 h-2.5 text-white" />}
-                  </button>
-                  <p className="text-xs font-mono text-muted-foreground">
-                    {selectedIds.size} of {parsedTrades.length} selected
-                  </p>
-                </div>
-                <p className="text-xs text-muted-foreground font-mono">{importFormat.toUpperCase()}</p>
+            <Panel className="overflow-hidden">
+              <div className="flex items-center justify-between gap-3 px-5 py-3">
+                <button onClick={toggleAll} className="flex items-center gap-2.5 text-sm text-muted-foreground hover:text-foreground">
+                  <Checkbox checked={selectedIds.size === parsedTrades.length} partial={selectedIds.size > 0} />
+                  <span><span className="tabular text-foreground">{selectedIds.size}</span> of <span className="tabular">{parsedTrades.length}</span> selected</span>
+                </button>
+                <p className="text-xs text-muted-foreground">Click a row to include or skip it. Duplicates are skipped automatically.</p>
               </div>
-              <div className="overflow-x-auto max-h-[420px] overflow-y-auto">
+              <div className="max-h-[440px] overflow-auto">
                 <table className="w-full">
-                  <thead className="bg-muted/20 sticky top-0 z-10">
-                    <tr className="border-b border-border/50 text-[10px] font-mono text-muted-foreground uppercase tracking-wider">
-                      <th className="px-3 py-2 text-left w-8"></th>
-                      <th className="px-3 py-2 text-left">Symbol</th>
-                      <th className="px-3 py-2 text-left">Dir</th>
-                      <th className="px-3 py-2 text-left">Lots</th>
-                      <th className="px-3 py-2 text-left">Entry</th>
-                      <th className="px-3 py-2 text-left">Exit</th>
-                      <th className="px-3 py-2 text-left">P/L</th>
-                      <th className="px-3 py-2 text-left">Date</th>
+                  <thead className="sticky top-0 z-10 bg-card">
+                    <tr className="text-left text-xs text-muted-foreground">
+                      <th className="w-10 px-3 py-2 font-medium"></th>
+                      <th className="px-3 py-2 font-medium">Symbol</th>
+                      <th className="px-3 py-2 font-medium">Side</th>
+                      <th className="px-3 py-2 font-medium">Lots</th>
+                      <th className="hidden px-3 py-2 font-medium md:table-cell">Entry</th>
+                      <th className="hidden px-3 py-2 font-medium md:table-cell">Exit</th>
+                      <th className="px-3 py-2 text-right font-medium">P&L</th>
+                      <th className="hidden px-3 py-2 font-medium sm:table-cell">Date</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -590,84 +532,73 @@ export default function ImportPage() {
                   </tbody>
                 </table>
               </div>
-            </div>
+            </Panel>
 
-            {/* Import Button */}
-            <div className="flex items-center gap-3">
+            {isImporting && (
+              <div className="h-1.5 w-full overflow-hidden rounded-full bg-secondary">
+                <div className="h-full rounded-full bg-brand transition-all duration-300" style={{ width: `${importProgress}%` }} />
+              </div>
+            )}
+
+            <div className="flex items-center justify-end gap-2">
               <Button variant="outline" onClick={() => setStep("upload")} disabled={isImporting}>
                 Back
               </Button>
-              <Button
-                onClick={handleBulkImport}
-                disabled={isImporting || selectedIds.size === 0}
-                className="flex-1 bg-emerald-600 hover:bg-emerald-700 text-white font-bold gap-2 shadow-lg shadow-emerald-500/10 h-11"
-              >
+              <Button onClick={handleBulkImport} disabled={isImporting || selectedIds.size === 0}>
                 {isImporting ? (
                   <>
-                    <Loader2 className="w-4 h-4 animate-spin" />
-                    Importing... {importProgress}%
+                    <Loader2 className="animate-spin" />
+                    Importing… <span className="tabular">{importProgress}%</span>
                   </>
                 ) : (
                   <>
-                    <Zap className="w-4 h-4 fill-current" />
-                    Import {selectedIds.size} Trade{selectedIds.size !== 1 ? "s" : ""}
+                    <Upload />
+                    Import {selectedIds.size} trade{selectedIds.size !== 1 ? "s" : ""}
                   </>
                 )}
               </Button>
             </div>
-            {isImporting && (
-              <div className="w-full h-2 bg-muted rounded-full overflow-hidden">
-                <div
-                  className="h-full bg-emerald-500 rounded-full transition-all duration-300"
-                  style={{ width: `${importProgress}%` }}
-                />
-              </div>
-            )}
           </div>
         )}
 
         {/* STEP 4: Complete */}
         {step === "complete" && importStats && (
-          <div className="max-w-lg mx-auto">
-            <div className="bg-card border border-border rounded-2xl p-8 text-center space-y-6">
-              <div className="w-20 h-20 bg-emerald-500/10 rounded-full flex items-center justify-center mx-auto border border-emerald-500/20">
-                <CheckCircle2 className="w-10 h-10 text-emerald-500" />
-              </div>
+          <Panel className="mx-auto max-w-lg">
+            <PanelBody className="space-y-6 p-8 text-center">
+              <span className="mx-auto flex size-14 items-center justify-center rounded-full bg-brand-soft text-brand">
+                <CheckCircle2 className="size-7" />
+              </span>
               <div>
-                <h2 className="text-2xl font-bold mb-1">Import Complete!</h2>
-                <p className="text-muted-foreground text-sm">Your trades have been added to the journal</p>
+                <h2 className="text-xl font-semibold">Import complete</h2>
+                <p className="mt-1 text-sm text-muted-foreground">Your trades have been added to the journal.</p>
               </div>
 
               <div className="grid grid-cols-2 gap-3 text-left">
                 {[
-                  { label: "Imported", value: importStats.imported, color: "text-emerald-500" },
-                  { label: "Skipped (duplicates)", value: importStats.skipped, color: "text-muted-foreground" },
-                  { label: "Total P&L", value: `${importStats.totalPL >= 0 ? "+" : ""}$${importStats.totalPL.toFixed(2)}`, color: importStats.totalPL >= 0 ? "text-emerald-500" : "text-red-500" },
-                  { label: "Win Rate", value: importStats.imported > 0 ? `${Math.round((importStats.wins / importStats.imported) * 100)}%` : "—", color: "text-blue-500" },
+                  { label: "Imported", value: String(importStats.imported), cls: "" },
+                  { label: "Skipped (duplicates)", value: String(importStats.skipped), cls: "text-muted-foreground" },
+                  { label: "Total P&L", value: formatMoney(importStats.totalPL, { sign: true }), cls: importStats.totalPL > 0 ? "text-profit" : importStats.totalPL < 0 ? "text-loss" : "" },
+                  { label: "Win rate", value: importStats.imported > 0 ? `${Math.round((importStats.wins / importStats.imported) * 100)}%` : "—", cls: "" },
                 ].map(stat => (
-                  <div key={stat.label} className="bg-muted/30 rounded-xl p-4 border border-border/30">
-                    <p className="text-[10px] text-muted-foreground font-mono uppercase tracking-wider">{stat.label}</p>
-                    <p className={cn("text-xl font-black font-mono mt-1", stat.color)}>{stat.value}</p>
+                  <div key={stat.label} className="rounded-lg border border-border bg-background/40 p-3">
+                    <p className="text-xs text-muted-foreground">{stat.label}</p>
+                    <p className={cn("mt-1 font-mono text-lg font-semibold tabular", stat.cls)}>{stat.value}</p>
                   </div>
                 ))}
               </div>
 
-              <div className="flex gap-3 pt-2">
+              <div className="flex gap-2">
                 <Button variant="outline" onClick={reset} className="flex-1">
-                  <RefreshCw className="w-4 h-4 mr-2" />
-                  Import More
+                  <RefreshCw /> Import more
                 </Button>
-                <Button
-                  onClick={() => window.location.href = "/journal"}
-                  className="flex-1 bg-emerald-600 hover:bg-emerald-700 text-white"
-                >
-                  View Journal →
+                <Button asChild className="flex-1">
+                  <Link href="/journal"><BookOpen /> View journal</Link>
                 </Button>
               </div>
-            </div>
-          </div>
+            </PanelBody>
+          </Panel>
         )}
-      </div>
+      </Page>
     </DashboardLayout>
   )
 }

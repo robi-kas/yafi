@@ -8,18 +8,8 @@ import BounceLoader from "@/components/ui/bounce-loader"
 
 function CalendarPageInner() {
     const { isLoading } = useDashboard()
-
-    if (isLoading) {
-        return <BounceLoader />
-    }
-
-    return (
-        <div className="h-[calc(100vh-theme(spacing.14))] lg:h-screen w-full overflow-hidden flex flex-col">
-            <div className="flex-1 min-h-0">
-                <TradeCalendar />
-            </div>
-        </div>
-    )
+    if (isLoading) return <BounceLoader />
+    return <TradeCalendar />
 }
 
 export default function CalendarPage() {

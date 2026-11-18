@@ -6,9 +6,13 @@ import { TradeEntryForm } from "@/components/dashboard/trade-entry-form"
 import { useDashboard } from "@/context/dashboard-context"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
+import { Label } from "@/components/ui/label"
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { ImageViewer } from "@/components/ui/image-viewer"
-import { Plus, Trash2, Edit2, Search, ChevronDown, ChevronRight, AlertTriangle } from "@/components/icons"
+import { Plus, Trash2, Edit2, Search, ChevronDown, ChevronRight, AlertTriangle, BookOpen } from "@/components/icons"
 import { calcResult as sharedCalcResult, calculateWinRate } from "@/lib/trading-metrics"
+import { Page, PageHeader, Panel, StatCard, EmptyState, ResultBadge, DirectionBadge, formatMoney, pnlTone } from "@/components/kit"
+import { cn } from "@/lib/utils"
 
 const MODEL_ABBR: Record<string, string> = {
   "Breaker Block": "BB",
@@ -20,15 +24,9 @@ const MODEL_ABBR: Record<string, string> = {
   "Other": "Other",
 }
 
-const RESULT_MAP: Record<string, { label: string; color: string; bg: string }> = {
-  win: { label: "W", color: "text-green-400", bg: "bg-green-500/20" },
-  loss: { label: "L", color: "text-red-400", bg: "bg-red-500/20" },
-  breakeven: { label: "BE", color: "text-yellow-400", bg: "bg-yellow-500/20" },
-}
-
-const HTF_MAP: Record<string, { label: string; icon: string; color: string }> = {
-  Bullish: { label: "Bullish Trend", icon: "📈", color: "text-green-400" },
-  Bearish: { label: "Bearish Trend", icon: "📉", color: "text-red-400" },
+const HTF_MAP: Record<string, { label: string; color: string }> = {
+  Bullish: { label: "Bullish", color: "bg-profit/10 text-profit" },
+  Bearish: { label: "Bearish", color: "bg-loss/10 text-loss" },
 }
 
 const MONTHS = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"]
@@ -45,18 +43,16 @@ function formatDate(iso: string): string {
 
 function UnknownBadge() {
   return (
-    <span className="inline-block px-1.5 py-0.5 rounded text-[10px] leading-none
-      bg-muted/20 text-muted-foreground/80 border border-border/50 font-mono tracking-wide">
-      UNKNOWN
+    <span className="inline-flex items-center rounded-md bg-secondary px-1.5 py-0.5 text-[11px] text-muted-foreground">
+      Unknown
     </span>
   )
 }
 
 function LegacyBadge() {
   return (
-    <span className="px-1 py-0.5 rounded text-[8px] leading-none
-      bg-amber-500/10 text-amber-500/70 font-mono ml-1.5 tracking-wide">
-      LEGACY
+    <span className="ml-1.5 inline-flex items-center rounded-md bg-warning/10 px-1.5 py-0.5 text-[10px] font-medium text-warning">
+      Legacy
     </span>
   )
 }
@@ -105,7 +101,7 @@ function calcNetRR(trade: any): number | null {
   if (stop === entry) return null
   const riskPerUnit = Math.abs(entry - stop)
   if (riskPerUnit <= 0) return null
-  const rewardPerUnit = trade.direction === "sell"
+  const rewardPerUnit = String(trade.direction || "").toLowerCase() === "sell"
     ? entry - exit
     : exit - entry
   return rewardPerUnit / riskPerUnit
@@ -136,6 +132,36 @@ function getPLDisplay(trade: any): string {
   const rounded = Math.round(pl * 100) / 100
   if (rounded === 0) return "$0.00"
   return (rounded > 0 ? "+$" : "-$") + Math.abs(rounded).toFixed(2)
+}
+
+function FilterSelect({
+  label,
+  value,
+  onChange,
+  options,
+}: {
+  label: string
+  value: string
+  onChange: (v: string) => void
+  options: { value: string; label: string }[]
+}) {
+  return (
+    <div className="space-y-1.5">
+      <Label className="text-xs text-muted-foreground">{label}</Label>
+      <Select value={value} onValueChange={onChange}>
+        <SelectTrigger className="w-full bg-background">
+          <SelectValue />
+        </SelectTrigger>
+        <SelectContent>
+          {options.map((o) => (
+            <SelectItem key={o.value} value={o.value}>
+              {o.label}
+            </SelectItem>
+          ))}
+        </SelectContent>
+      </Select>
+    </div>
+  )
 }
 
 export default function TradeJournal() {
@@ -210,6 +236,11 @@ export default function TradeJournal() {
     setSelectedTrade(null)
   }
 
+  const openNewTrade = () => {
+    setSelectedTrade(null)
+    setShowForm(true)
+  }
+
   const totalPL = filteredTrades.reduce((sum, t) => sum + (t.profitLoss || 0), 0)
   const winCount = filteredTrades.filter(t => calcResult(t) === "win").length
   const lossCount = filteredTrades.filter(t => calcResult(t) === "loss").length
@@ -217,198 +248,189 @@ export default function TradeJournal() {
   const winRate = calculateWinRate(winCount, lossCount)
 
   const columnCount = showNetR ? 15 : 14
+  const filtersActive =
+    !!searchSymbol || [filterSession, filterHtf, filterModel, filterResult, filterMistake].some(f => f !== "all")
+  const clearFilters = () => {
+    setSearchSymbol("")
+    setFilterSession("all")
+    setFilterHtf("all")
+    setFilterModel("all")
+    setFilterResult("all")
+    setFilterMistake("all")
+  }
+
+  const th = "px-3 py-2.5 text-xs font-medium text-muted-foreground whitespace-nowrap"
+  const td = "px-3 py-2.5"
 
   return (
     <DashboardLayout>
-      <div className="p-4 md:p-6 lg:p-8">
-        {/* Header */}
-        <div className="mb-6 md:mb-8">
-          <div className="flex items-center justify-between">
+      <Page>
+        <PageHeader
+          title="Trades"
+          description="Review every trade, its setup and what you learned"
+          actions={
+            <Button size="sm" onClick={openNewTrade}>
+              <Plus /> New trade
+            </Button>
+          }
+        />
+
+        {/* Legacy warning banner */}
+        {showLegacyWarning && (
+          <div className="mb-6 flex items-start gap-3 rounded-xl border border-warning/25 bg-warning/5 p-4">
+            <AlertTriangle className="mt-0.5 size-4 shrink-0 text-warning" />
             <div>
-              <h1 className="text-2xl md:text-3xl font-semibold tracking-tight">Trade Journal</h1>
-              <p className="text-sm md:text-base text-muted-foreground mt-1">
-                Performance-focused trade review
+              <p className="text-sm font-medium">Analytics may be incomplete</p>
+              <p className="mt-0.5 text-xs text-muted-foreground">
+                Most trades were recorded before enhanced journaling was enabled. Log setup details on new trades for more accurate statistics.
               </p>
             </div>
-            <Button
-              onClick={() => {
-                setSelectedTrade(null)
-                setShowForm(true)
-              }}
-              className="gap-2"
-            >
-              <Plus className="w-4 h-4" />
-              <span className="hidden sm:inline">New Trade</span>
-            </Button>
           </div>
-
-          {/* Legacy warning banner */}
-          {showLegacyWarning && (
-            <div className="mt-4 flex items-start gap-2.5 p-3 rounded-lg bg-amber-500/8 border border-amber-500/20">
-              <AlertTriangle className="w-4 h-4 text-amber-500 shrink-0 mt-0.5" />
-              <div>
-                <p className="text-xs font-medium text-amber-500">Analytics may be incomplete</p>
-                <p className="text-[11px] text-amber-500/70 mt-0.5">
-                  Most trades were recorded before enhanced journaling was enabled. Collect enhanced trades for more accurate statistics.
-                </p>
-              </div>
-            </div>
-          )}
-        </div>
+        )}
 
         {/* Stats */}
-        <div className="grid grid-cols-2 md:grid-cols-6 gap-4 mb-6">
-          <div className="bg-card border border-border rounded-lg p-4">
-            <p className="text-xs text-muted-foreground mb-1">Total Trades</p>
-            <p className="text-2xl font-semibold">{filteredTrades.length}</p>
-          </div>
-          <div className="bg-card border border-border rounded-lg p-4">
-            <p className="text-xs text-muted-foreground mb-1">Wins</p>
-            <p className="text-2xl font-semibold text-green-400">{winCount}</p>
-          </div>
-          <div className="bg-card border border-border rounded-lg p-4">
-            <p className="text-xs text-muted-foreground mb-1">Breakeven</p>
-            <p className="text-2xl font-semibold text-yellow-400">{beCount}</p>
-          </div>
-          <div className="bg-card border border-border rounded-lg p-4">
-            <p className="text-xs text-muted-foreground mb-1">Losses</p>
-            <p className="text-2xl font-semibold text-red-400">{lossCount}</p>
-          </div>
-          <div className="bg-card border border-border rounded-lg p-4">
-            <p className="text-xs text-muted-foreground mb-1">Win Rate</p>
-            <p className="text-2xl font-semibold">{winRate.toFixed(1)}%</p>
-          </div>
-          <div className="bg-card border border-border rounded-lg p-4">
-            <p className="text-xs text-muted-foreground mb-1">Total P&L</p>
-            <p className={`text-2xl font-semibold ${totalPL > 0 ? 'text-green-400' : totalPL < 0 ? 'text-red-400' : ''}`}>
-              {totalPL > 0 ? '+' : ''}${totalPL.toFixed(2)}
-            </p>
-          </div>
+        <div className="mb-6 grid grid-cols-2 gap-3 md:gap-4 lg:grid-cols-6">
+          <StatCard label="Trades" value={filteredTrades.length} />
+          <StatCard label="Wins" value={winCount} tone="profit" />
+          <StatCard label="Breakeven" value={beCount} tone="muted" />
+          <StatCard label="Losses" value={lossCount} tone="loss" />
+          <StatCard label="Win rate" value={`${winRate.toFixed(1)}%`} />
+          <StatCard label="Total P&L" value={formatMoney(totalPL, { sign: true })} tone={pnlTone(totalPL)} />
         </div>
 
         {/* Filters */}
-        <div className="bg-card border border-border rounded-lg p-4 mb-6">
-          <div className="grid grid-cols-2 md:grid-cols-6 gap-4">
-            <div>
-              <label className="text-xs text-muted-foreground block mb-2">Search Symbol</label>
+        <Panel className="mb-6 p-4">
+          <div className="grid grid-cols-2 gap-3 md:grid-cols-3 lg:grid-cols-6">
+            <div className="space-y-1.5">
+              <Label htmlFor="journal-search" className="text-xs text-muted-foreground">Symbol</Label>
               <div className="relative">
-                <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+                <Search className="absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
                 <Input
+                  id="journal-search"
                   value={searchSymbol}
                   onChange={(e) => setSearchSymbol(e.target.value)}
-                  placeholder="EURUSD..."
-                  className="pl-10"
+                  placeholder="EURUSD…"
+                  className="bg-background pl-9"
                 />
               </div>
             </div>
-            <div>
-              <label className="text-xs text-muted-foreground block mb-2">Session</label>
-              <select
-                value={filterSession}
-                onChange={(e) => setFilterSession(e.target.value)}
-                className="w-full px-3 py-2 rounded-md border border-input bg-background text-sm"
-              >
-                <option value="all">All Sessions</option>
-                <option value="unknown">UNKNOWN</option>
-                <option value="London">London</option>
-                <option value="New York">New York</option>
-                <option value="Asia">Asia</option>
-                <option value="London Open">London Open</option>
-                <option value="NY Open">NY Open</option>
-                <option value="London/NY Overlap">London/NY Overlap</option>
-              </select>
-            </div>
-            <div>
-              <label className="text-xs text-muted-foreground block mb-2">HTF Bias</label>
-              <select
-                value={filterHtf}
-                onChange={(e) => setFilterHtf(e.target.value)}
-                className="w-full px-3 py-2 rounded-md border border-input bg-background text-sm"
-              >
-                <option value="all">All Bias</option>
-                <option value="unknown">UNKNOWN</option>
-                <option value="bull">Bullish Trend</option>
-                <option value="bear">Bearish Trend</option>
-              </select>
-            </div>
-            <div>
-              <label className="text-xs text-muted-foreground block mb-2">Model</label>
-              <select
-                value={filterModel}
-                onChange={(e) => setFilterModel(e.target.value)}
-                className="w-full px-3 py-2 rounded-md border border-input bg-background text-sm"
-              >
-                <option value="all">All Models</option>
-                <option value="unknown">UNKNOWN</option>
-                {Object.entries(MODEL_ABBR).map(([full, abbr]) => (
-                  <option key={full} value={abbr}>{abbr} - {full}</option>
-                ))}
-              </select>
-            </div>
-            <div>
-              <label className="text-xs text-muted-foreground block mb-2">Result</label>
-              <select
-                value={filterResult}
-                onChange={(e) => setFilterResult(e.target.value)}
-                className="w-full px-3 py-2 rounded-md border border-input bg-background text-sm"
-              >
-                <option value="all">All Results</option>
-                <option value="win">Win</option>
-                <option value="loss">Loss</option>
-                <option value="be">Breakeven</option>
-              </select>
-            </div>
-            <div>
-              <label className="text-xs text-muted-foreground block mb-2">Mistake</label>
-              <select
-                value={filterMistake}
-                onChange={(e) => setFilterMistake(e.target.value)}
-                className="w-full px-3 py-2 rounded-md border border-input bg-background text-sm"
-              >
-                <option value="all">All Trades</option>
-                <option value="clean">Clean Trades</option>
-                <option value="mistake">Mistake Trades</option>
-              </select>
-            </div>
+            <FilterSelect
+              label="Session"
+              value={filterSession}
+              onChange={setFilterSession}
+              options={[
+                { value: "all", label: "All sessions" },
+                { value: "unknown", label: "Unknown" },
+                { value: "London", label: "London" },
+                { value: "New York", label: "New York" },
+                { value: "Asia", label: "Asia" },
+                { value: "London Open", label: "London Open" },
+                { value: "NY Open", label: "NY Open" },
+                { value: "London/NY Overlap", label: "London/NY Overlap" },
+              ]}
+            />
+            <FilterSelect
+              label="HTF bias"
+              value={filterHtf}
+              onChange={setFilterHtf}
+              options={[
+                { value: "all", label: "All bias" },
+                { value: "unknown", label: "Unknown" },
+                { value: "bull", label: "Bullish" },
+                { value: "bear", label: "Bearish" },
+              ]}
+            />
+            <FilterSelect
+              label="Model"
+              value={filterModel}
+              onChange={setFilterModel}
+              options={[
+                { value: "all", label: "All models" },
+                { value: "unknown", label: "Unknown" },
+                ...Object.entries(MODEL_ABBR).map(([full, abbr]) => ({ value: abbr, label: abbr === full ? full : `${abbr} · ${full}` })),
+              ]}
+            />
+            <FilterSelect
+              label="Result"
+              value={filterResult}
+              onChange={setFilterResult}
+              options={[
+                { value: "all", label: "All results" },
+                { value: "win", label: "Win" },
+                { value: "loss", label: "Loss" },
+                { value: "be", label: "Breakeven" },
+              ]}
+            />
+            <FilterSelect
+              label="Mistakes"
+              value={filterMistake}
+              onChange={setFilterMistake}
+              options={[
+                { value: "all", label: "All trades" },
+                { value: "clean", label: "Clean trades" },
+                { value: "mistake", label: "With mistakes" },
+              ]}
+            />
           </div>
-        </div>
+        </Panel>
 
         {/* Trades Table */}
-        <div className="bg-card border border-border rounded-lg overflow-hidden">
+        <Panel className="overflow-hidden">
+          <div className="flex items-center justify-between gap-3 border-b border-border px-5 py-3">
+            <p className="text-sm font-medium">
+              {filteredTrades.length} {filteredTrades.length === 1 ? "trade" : "trades"}
+              {filtersActive && <span className="font-normal text-muted-foreground"> matching filters</span>}
+            </p>
+            <div className="flex items-center gap-2">
+              {filtersActive && (
+                <Button variant="ghost" size="sm" onClick={clearFilters}>
+                  Clear filters
+                </Button>
+              )}
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => setShowNetR(!showNetR)}
+                className={cn(showNetR && "border-brand/40 bg-brand-soft text-brand hover:bg-brand-soft hover:text-brand")}
+              >
+                {showNetR ? "Hide net R" : "Show net R"}
+              </Button>
+            </div>
+          </div>
+
           {isLoading && trades.length === 0 ? (
-            <div className="flex flex-col items-center justify-center py-20 bg-card border border-border rounded-lg">
-              <div className="w-10 h-10 border-4 border-lime/30 border-t-lime rounded-full animate-spin mb-4" />
-              <p className="text-muted-foreground animate-pulse font-mono tracking-widest text-xs uppercase">Loading Trades...</p>
+            <div className="flex flex-col items-center justify-center py-20">
+              <div className="mb-4 size-8 animate-spin rounded-full border-2 border-brand/30 border-t-brand" />
+              <p className="text-sm text-muted-foreground">Loading trades…</p>
             </div>
           ) : filteredTrades.length > 0 ? (
             <div className="overflow-x-auto">
-              <table className="w-full">
+              <table className="w-full text-sm">
                 <thead>
-                  <tr className="border-b border-border">
-                    <th className="w-5 px-2 py-3"></th>
-                    <th className="px-2 py-3 text-left text-xs font-medium text-muted-foreground whitespace-nowrap">Symbol</th>
-                    <th className="px-2 py-3 text-left text-xs font-medium text-muted-foreground whitespace-nowrap">Date</th>
-                    <th className="px-2 py-3 text-left text-xs font-medium text-muted-foreground whitespace-nowrap">Dir</th>
-                    <th className="px-2 py-3 text-left text-xs font-medium text-muted-foreground whitespace-nowrap">Session</th>
-                    <th className="px-2 py-3 text-left text-xs font-medium text-muted-foreground whitespace-nowrap">HTF Bias</th>
-                    <th className="px-2 py-3 text-left text-xs font-medium text-muted-foreground whitespace-nowrap">Model</th>
-                    <th className="px-2 py-3 text-left text-xs font-medium text-muted-foreground whitespace-nowrap">Result</th>
-                    <th className="px-2 py-3 text-right text-xs font-medium text-muted-foreground whitespace-nowrap">P&L</th>
-                    <th className="px-2 py-3 text-right text-xs font-medium text-muted-foreground whitespace-nowrap">RR</th>
-                    {showNetR && (
-                      <th className="px-2 py-3 text-right text-xs font-medium text-muted-foreground whitespace-nowrap">Net R</th>
-                    )}
-                    <th className="px-2 py-3 text-center text-xs font-medium text-muted-foreground whitespace-nowrap">Score</th>
-                    <th className="px-2 py-3 text-center text-xs font-medium text-muted-foreground whitespace-nowrap">Mistake</th>
-                    <th className="px-2 py-3 text-center text-xs font-medium text-muted-foreground whitespace-nowrap">Shots</th>
-                    <th className="px-2 py-3 text-right text-xs font-medium text-muted-foreground whitespace-nowrap">Actions</th>
+                  <tr className="border-b border-border text-left">
+                    <th className="w-8 py-2.5 pl-4"></th>
+                    <th className={th}>Symbol</th>
+                    <th className={th}>Date</th>
+                    <th className={th}>Side</th>
+                    <th className={th}>Session</th>
+                    <th className={th}>HTF bias</th>
+                    <th className={th}>Model</th>
+                    <th className={th}>Result</th>
+                    <th className={cn(th, "text-right")}>P&L</th>
+                    <th className={cn(th, "text-right")}>RR</th>
+                    {showNetR && <th className={cn(th, "text-right")}>Net R</th>}
+                    <th className={cn(th, "text-center")}>Score</th>
+                    <th className={cn(th, "text-center")}>Mistakes</th>
+                    <th className={cn(th, "text-center")}>Shots</th>
+                    <th className={cn(th, "pr-4 text-right")}>
+                      <span className="sr-only">Actions</span>
+                    </th>
                   </tr>
                 </thead>
                 <tbody>
                   {filteredTrades.map((trade) => {
                     const score = calcSetupScore(trade)
-                    const calcResultVal = calcResult(trade)
-                    const resultStyle = RESULT_MAP[calcResultVal]
+                    const resultVal = trade.tradeStatus === "open" ? "" : calcResult(trade)
                     const htfValue = trade.htfBias || "UNKNOWN"
                     const htfStyle = HTF_MAP[htfValue]
                     const mistakeList = allMistakeTags(trade)
@@ -417,116 +439,103 @@ export default function TradeJournal() {
                       ? ((trade.mistakeTags || []).length > 0 || (trade.mistakes || []).length > 0)
                       : mistakeList.length > 0
                     const isExpanded = expandedRow === trade.id
+                    const pl = trade.profitLoss || 0
 
                     return (
                       <Fragment key={trade.id}>
                         <tr
-                          className="border-b border-border hover:bg-background/50 transition-colors cursor-pointer"
+                          className={cn(
+                            "cursor-pointer border-b border-border transition-colors hover:bg-accent/40",
+                            isExpanded && "bg-accent/30"
+                          )}
                           onClick={() => setExpandedRow(isExpanded ? null : trade.id)}
                         >
-                          <td className="px-2 py-3">
-                            {isExpanded ? <ChevronDown className="w-3 h-3 text-muted-foreground" /> : <ChevronRight className="w-3 h-3 text-muted-foreground" />}
+                          <td className="py-2.5 pl-4">
+                            {isExpanded ? (
+                              <ChevronDown className="size-3.5 text-muted-foreground" />
+                            ) : (
+                              <ChevronRight className="size-3.5 text-muted-foreground" />
+                            )}
                           </td>
-                          <td className="px-2 py-3">
-                            <span className="font-mono font-semibold text-sm">{trade.symbol}</span>
+                          <td className={cn(td, "whitespace-nowrap")}>
+                            <span className="font-medium">{trade.symbol}</span>
                             {legacy && <LegacyBadge />}
                           </td>
-                          <td className="px-2 py-3">
-                            <span className="text-xs text-muted-foreground font-mono">
-                              {formatDate(trade.entryTime)}
-                            </span>
+                          <td className={cn(td, "whitespace-nowrap text-muted-foreground tabular")}>{formatDate(trade.entryTime)}</td>
+                          <td className={td}>
+                            <DirectionBadge direction={trade.direction} />
                           </td>
-                          <td className="px-2 py-3">
-                            <span className={`px-1.5 py-0.5 rounded text-[11px] font-medium ${trade.direction === 'buy'
-                              ? 'bg-green-500/20 text-green-400'
-                              : 'bg-red-500/20 text-red-400'
-                              }`}>
-                              {trade.direction === 'buy' ? 'BUY' : 'SELL'}
-                            </span>
-                          </td>
-                          <td className="px-2 py-3">
-                            {(trade.session === "UNKNOWN" || !trade.session) ? (
+                          <td className={cn(td, "whitespace-nowrap")}>
+                            {trade.session === "UNKNOWN" || !trade.session ? (
                               <UnknownBadge />
                             ) : (
-                              <span className="px-1.5 py-0.5 rounded text-[11px] bg-blue-500/20 text-blue-400">
-                                {trade.session}
-                              </span>
+                              <span className="inline-flex items-center rounded-md bg-secondary px-1.5 py-0.5 text-[11px]">{trade.session}</span>
                             )}
                           </td>
-                          <td className="px-2 py-3 text-sm whitespace-nowrap">
-                            {htfValue === "UNKNOWN" ? (
-                              <UnknownBadge />
-                            ) : htfStyle ? (
-                              <span className={htfStyle.color}>
-                                {htfStyle.icon} {htfStyle.label}
+                          <td className={cn(td, "whitespace-nowrap")}>
+                            {htfStyle ? (
+                              <span className={cn("inline-flex items-center rounded-md px-1.5 py-0.5 text-[11px] font-medium", htfStyle.color)}>
+                                {htfStyle.label}
                               </span>
                             ) : (
                               <UnknownBadge />
                             )}
                           </td>
-                          <td className="px-2 py-3">
-                            {(!trade.entryModel || trade.entryModel === "UNKNOWN") ? (
+                          <td className={td}>
+                            {!trade.entryModel || trade.entryModel === "UNKNOWN" ? (
                               <UnknownBadge />
                             ) : (
-                              <span className="px-1.5 py-0.5 rounded text-[11px] bg-cyan-500/20 text-cyan-400 font-mono">
+                              <span className="inline-flex items-center rounded-md bg-secondary px-1.5 py-0.5 text-[11px] font-medium">
                                 {MODEL_ABBR[trade.entryModel] || trade.entryModel}
                               </span>
                             )}
                           </td>
-                          <td className="px-2 py-3">
-                            {resultStyle ? (
-                              <span className={`px-1.5 py-0.5 rounded text-[11px] font-medium ${resultStyle.bg} ${resultStyle.color}`}>
-                                {resultStyle.label}
-                              </span>
-                            ) : (
-                              <span className="text-xs text-muted-foreground">-</span>
-                            )}
+                          <td className={td}>
+                            <ResultBadge result={resultVal} />
                           </td>
-                          <td className={`px-2 py-3 text-right text-sm font-mono ${(trade.profitLoss || 0) > 0 ? 'text-green-400' : (trade.profitLoss || 0) < 0 ? 'text-red-400' : ''}`}>
+                          <td className={cn(td, "whitespace-nowrap text-right font-mono tabular", pl > 0 ? "text-profit" : pl < 0 ? "text-loss" : "")}>
                             {getPLDisplay(trade)}
                           </td>
-                          <td className="px-2 py-3 text-right text-sm font-mono">
-                            {getRRDisplay(trade)}
-                          </td>
+                          <td className={cn(td, "text-right font-mono tabular")}>{getRRDisplay(trade)}</td>
                           {showNetR && (
-                            <td className={`px-2 py-3 text-right text-sm font-mono ${(trade.profitLoss || 0) > 0 ? 'text-green-400' : (trade.profitLoss || 0) < 0 ? 'text-red-400' : ''}`}>
+                            <td className={cn(td, "text-right font-mono tabular", pl > 0 ? "text-profit" : pl < 0 ? "text-loss" : "")}>
                               {getNetRDisplay(trade)}
                             </td>
                           )}
-                          <td className="px-2 py-3 text-center">
+                          <td className={cn(td, "text-center")}>
                             {score.hasData ? (
-                              <span className={`text-xs font-mono ${score.score > 0 ? 'text-emerald-400' : 'text-muted-foreground'}`}>
+                              <span className={cn("font-mono text-xs tabular", score.score > 0 ? "text-brand" : "text-muted-foreground")}>
                                 {score.score}/{score.total}
                               </span>
                             ) : (
-                              <span className="text-xs text-muted-foreground">N/A</span>
+                              <span className="text-xs text-muted-foreground">—</span>
                             )}
                           </td>
-                          <td className="px-2 py-3 text-center">
+                          <td className={cn(td, "text-center")}>
                             {legacy && !hasVerifiedMistakes ? (
                               <UnknownBadge />
                             ) : hasVerifiedMistakes ? (
-                              <span className="text-xs text-red-400 cursor-help" title={mistakeList.join(", ")}>
-                                ⚠ Mistake
+                              <span
+                                className="inline-flex cursor-help items-center rounded-md bg-loss/10 px-1.5 py-0.5 text-[11px] font-medium text-loss"
+                                title={mistakeList.join(", ")}
+                              >
+                                {mistakeList.length || 1} {mistakeList.length === 1 ? "mistake" : "mistakes"}
                               </span>
                             ) : (
-                              <span className="text-xs text-emerald-400">✓ Clean</span>
+                              <span className="inline-flex items-center rounded-md bg-profit/10 px-1.5 py-0.5 text-[11px] font-medium text-profit">Clean</span>
                             )}
                           </td>
-                          <td className="px-2 py-3 text-center">
-                            {trade.screenshots && trade.screenshots.length > 0 ? (
-                              <span className="text-xs text-muted-foreground">{trade.screenshots.length}</span>
-                            ) : (
-                              <span className="text-xs text-muted-foreground">-</span>
-                            )}
+                          <td className={cn(td, "text-center text-xs text-muted-foreground tabular")}>
+                            {trade.screenshots && trade.screenshots.length > 0 ? trade.screenshots.length : "—"}
                           </td>
-                          <td className="px-2 py-3 text-right whitespace-nowrap">
+                          <td className={cn(td, "whitespace-nowrap pr-4 text-right")}>
                             <button
                               onClick={(e) => { e.stopPropagation(); handleEditTrade(trade.id) }}
-                              className="p-1 hover:bg-background rounded transition-colors inline-flex"
+                              className="inline-flex rounded-md p-1.5 text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
                               title="Edit trade"
+                              aria-label="Edit trade"
                             >
-                              <Edit2 className="w-3.5 h-3.5" />
+                              <Edit2 className="size-3.5" />
                             </button>
                             <button
                               onClick={(e) => {
@@ -535,53 +544,38 @@ export default function TradeJournal() {
                                   deleteTrade(trade.id)
                                 }
                               }}
-                              className="p-1 hover:bg-background rounded transition-colors text-red-400 hover:text-red-500 inline-flex"
+                              className="inline-flex rounded-md p-1.5 text-muted-foreground transition-colors hover:bg-accent hover:text-loss"
                               title="Delete trade"
+                              aria-label="Delete trade"
                             >
-                              <Trash2 className="w-3.5 h-3.5" />
-                            </button>
-                            <button
-                              onClick={(e) => { e.stopPropagation(); setShowNetR(!showNetR) }}
-                              className={`p-1 rounded transition-colors inline-flex ml-1 ${showNetR ? 'text-lime bg-lime/10' : 'text-muted-foreground hover:text-foreground hover:bg-background'}`}
-                              title="Toggle Net R column"
-                            >
-                              <span className="text-[10px] font-mono font-bold">R</span>
+                              <Trash2 className="size-3.5" />
                             </button>
                           </td>
                         </tr>
                         {isExpanded && (
                           <tr key={`${trade.id}-expanded`}>
-                            <td colSpan={columnCount} className="bg-muted/20 border-b border-border">
+                            <td colSpan={columnCount} className="border-b border-border bg-background/40">
                               {legacy ? (
-                                <div className="p-4 text-center">
-                                  <p className="text-xs text-muted-foreground/60 italic">
-                                    No enhanced journal data available.
-                                  </p>
-                                </div>
+                                <p className="p-5 text-center text-xs text-muted-foreground">No enhanced journal data for this trade.</p>
                               ) : (
-                                <div className="p-4 grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                                <div className="grid grid-cols-1 gap-5 p-5 md:grid-cols-2 lg:grid-cols-3">
+                                  {[
+                                    ["Notes", trade.notes || "None"],
+                                    ["Entry reason", trade.entryReason || "Not recorded"],
+                                    ["Exit reason", trade.exitReason || "Not recorded"],
+                                    ["Lesson learned", trade.lessonLearned || "Not recorded"],
+                                  ].map(([label, value]) => (
+                                    <div key={label}>
+                                      <p className="mb-1 text-xs font-medium text-muted-foreground">{label}</p>
+                                      <p className="whitespace-pre-wrap text-sm">{value}</p>
+                                    </div>
+                                  ))}
                                   <div>
-                                    <p className="text-[11px] text-muted-foreground font-medium mb-1">Notes</p>
-                                    <p className="text-sm">{trade.notes || "None"}</p>
-                                  </div>
-                                  <div>
-                                    <p className="text-[11px] text-muted-foreground font-medium mb-1">Entry Reason</p>
-                                    <p className="text-sm">{trade.entryReason || "Not recorded"}</p>
-                                  </div>
-                                  <div>
-                                    <p className="text-[11px] text-muted-foreground font-medium mb-1">Exit Reason</p>
-                                    <p className="text-sm">{trade.exitReason || "Not recorded"}</p>
-                                  </div>
-                                  <div>
-                                    <p className="text-[11px] text-muted-foreground font-medium mb-1">Lesson Learned</p>
-                                    <p className="text-sm">{trade.lessonLearned || "Not recorded"}</p>
-                                  </div>
-                                  <div>
-                                    <p className="text-[11px] text-muted-foreground font-medium mb-1">Tags</p>
+                                    <p className="mb-1 text-xs font-medium text-muted-foreground">Tags</p>
                                     {trade.tags && trade.tags.length > 0 ? (
                                       <div className="flex flex-wrap gap-1">
                                         {trade.tags.map((t: string, ti: number) => (
-                                          <span key={`tag-${ti}`} className="px-1.5 py-0.5 rounded text-[10px] bg-muted/30 text-muted-foreground">{t}</span>
+                                          <span key={`tag-${ti}`} className="rounded-md bg-secondary px-1.5 py-0.5 text-[11px] text-muted-foreground">{t}</span>
                                         ))}
                                       </div>
                                     ) : (
@@ -589,26 +583,26 @@ export default function TradeJournal() {
                                     )}
                                     {mistakeList.length > 0 && (
                                       <>
-                                        <p className="text-[11px] text-muted-foreground font-medium mb-1 mt-2">Mistake Tags</p>
+                                        <p className="mb-1 mt-3 text-xs font-medium text-muted-foreground">Mistakes</p>
                                         <div className="flex flex-wrap gap-1">
                                           {mistakeList.map((m: string, mi: number) => (
-                                            <span key={`mistake-${mi}`} className="px-1.5 py-0.5 rounded text-[10px] bg-red-500/20 text-red-400">{m}</span>
+                                            <span key={`mistake-${mi}`} className="rounded-md bg-loss/10 px-1.5 py-0.5 text-[11px] text-loss">{m}</span>
                                           ))}
                                         </div>
                                       </>
                                     )}
                                   </div>
                                   <div>
-                                    <p className="text-[11px] text-muted-foreground font-medium mb-1">Screenshots</p>
+                                    <p className="mb-1 text-xs font-medium text-muted-foreground">Screenshots</p>
                                     <div className="flex gap-2">
                                       {trade.screenshots && trade.screenshots.length > 0 ? (
                                         trade.screenshots.slice(0, 3).map((s: string, i: number) => (
                                           <button
                                             key={i}
                                             onClick={() => setViewerImage(s)}
-                                            className="w-16 h-12 rounded border border-border overflow-hidden hover:opacity-80 transition-opacity"
+                                            className="h-12 w-16 overflow-hidden rounded-md border border-border transition-opacity hover:opacity-80"
                                           >
-                                            <img src={s} alt="" className="w-full h-full object-cover" />
+                                            <img src={s} alt={`Screenshot ${i + 1}`} className="h-full w-full object-cover" />
                                           </button>
                                         ))
                                       ) : (
@@ -627,44 +621,30 @@ export default function TradeJournal() {
                 </tbody>
               </table>
             </div>
+          ) : trades.length === 0 ? (
+            <EmptyState
+              icon={BookOpen}
+              title="No trades yet"
+              description="Log your first trade or import your history to start building your journal."
+              action={
+                <Button size="sm" onClick={openNewTrade}>
+                  <Plus /> Log first trade
+                </Button>
+              }
+            />
           ) : (
-            <div className="p-12 text-center">
-              {trades.length === 0 ? (
-                <>
-                  <p className="text-muted-foreground mb-4">You haven't recorded any trades yet</p>
-                  <Button
-                    onClick={() => {
-                      setSelectedTrade(null)
-                      setShowForm(true)
-                    }}
-                    className="gap-2"
-                  >
-                    <Plus className="w-4 h-4" />
-                    Record First Trade
-                  </Button>
-                </>
-              ) : (
-                <p className="text-muted-foreground">No trades found matching your filters</p>
-              )}
-            </div>
+            <EmptyState
+              icon={Search}
+              title="No trades match these filters"
+              action={
+                <Button size="sm" variant="outline" onClick={clearFilters}>
+                  Clear filters
+                </Button>
+              }
+            />
           )}
-        </div>
-
-        {/* Net R toggle outside table */}
-        {filteredTrades.length > 0 && (
-          <div className="mt-3 flex justify-end">
-            <button
-              onClick={() => setShowNetR(!showNetR)}
-              className={`text-xs px-2.5 py-1.5 rounded-md border transition-colors ${showNetR
-                ? 'bg-lime/10 border-lime/30 text-lime'
-                : 'bg-transparent border-border text-muted-foreground hover:text-foreground hover:bg-background'
-                }`}
-            >
-              {showNetR ? "Hide Net R" : "Show Net R"}
-            </button>
-          </div>
-        )}
-      </div>
+        </Panel>
+      </Page>
 
       {/* Image Viewer */}
       {viewerImage && (

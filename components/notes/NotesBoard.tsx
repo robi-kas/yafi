@@ -1,10 +1,13 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { Plus, Folder as FolderIcon, X, Maximize2, MoreVertical, Check, Trash2, Edit2, Bold, Italic, Heading2, List, Table as TableIcon, Columns, Rows, Combine, SplitSquareHorizontal, Trash, Minus } from "@/components/icons";
+import { Plus, StickyNote, Folder as FolderIcon, X, Maximize2, MoreVertical, Check, Trash2, Edit2, Bold, Italic, Heading2, List, Table as TableIcon, Columns, Rows, Combine, SplitSquareHorizontal, Trash, Minus } from "@/components/icons";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { PageHeader, Panel, EmptyState } from "@/components/kit";
+import { cn } from "@/lib/utils";
 import { useEditor, EditorContent } from '@tiptap/react';
 import StarterKit from '@tiptap/starter-kit';
 import { Color } from '@tiptap/extension-color';
@@ -33,11 +36,11 @@ type Folder = {
 };
 
 const NOTE_COLORS = [
-  { id: 'yellow', bg: 'bg-yellow-100 dark:bg-yellow-900/30', border: 'border-yellow-200 dark:border-yellow-800' },
-  { id: 'green', bg: 'bg-emerald-100 dark:bg-emerald-900/30', border: 'border-emerald-200 dark:border-emerald-800' },
-  { id: 'blue', bg: 'bg-blue-100 dark:bg-blue-900/30', border: 'border-blue-200 dark:border-blue-800' },
-  { id: 'pink', bg: 'bg-pink-100 dark:bg-pink-900/30', border: 'border-pink-200 dark:border-pink-800' },
-  { id: 'purple', bg: 'bg-purple-100 dark:bg-purple-900/30', border: 'border-purple-200 dark:border-purple-800' },
+  { id: 'yellow', dot: 'bg-amber-400', tint: 'bg-amber-400/[0.06]', bar: 'bg-amber-400' },
+  { id: 'green', dot: 'bg-brand', tint: 'bg-brand/[0.06]', bar: 'bg-brand' },
+  { id: 'blue', dot: 'bg-sky-400', tint: 'bg-sky-400/[0.06]', bar: 'bg-sky-400' },
+  { id: 'pink', dot: 'bg-pink-400', tint: 'bg-pink-400/[0.06]', bar: 'bg-pink-400' },
+  { id: 'purple', dot: 'bg-violet-400', tint: 'bg-violet-400/[0.06]', bar: 'bg-violet-400' },
 ];
 
 export default function NotesBoard() {
@@ -88,6 +91,7 @@ export default function NotesBoard() {
         fetch('/api/folders')
       ]);
       const [n, f] = await Promise.all([notesRes.json(), foldersRes.json()]);
+      if (!notesRes.ok || !foldersRes.ok || !Array.isArray(n) || !Array.isArray(f)) throw new Error('load failed');
       setNotes(n);
       setFolders(f);
     } catch (e) {
@@ -172,128 +176,157 @@ export default function NotesBoard() {
     ? notes.filter(n => n.folderId === selectedFolderId)
     : notes;
 
+  const deleteFolder = async (folder: Folder) => {
+    if (!confirm(`Delete the folder "${folder.name}"? Its notes are kept and moved to All notes.`)) return;
+    try {
+      const res = await fetch(`/api/folders/${folder.id}`, { method: 'DELETE' });
+      if (!res.ok) throw new Error();
+      setFolders(folders.filter(f => f.id !== folder.id));
+      if (selectedFolderId === folder.id) setSelectedFolderId(null);
+      // The API un-files the notes (folderId -> null); it does not delete them.
+      setNotes(notes.map(n => n.folderId === folder.id ? { ...n, folderId: null } : n));
+    } catch {
+      toast.error("Failed to delete folder");
+    }
+  };
+
+  const folderButton = (id: string | null, name: string, count: number, folder?: Folder) => (
+    <div
+      key={id ?? 'all'}
+      className={cn(
+        "group flex h-9 items-center gap-2 rounded-md px-2.5 text-sm transition-colors",
+        selectedFolderId === id ? "bg-accent text-foreground" : "text-muted-foreground hover:bg-accent/60 hover:text-foreground"
+      )}
+    >
+      <button onClick={() => setSelectedFolderId(id)} className="flex min-w-0 flex-1 items-center gap-2 text-left">
+        {id === null ? <StickyNote className="size-4 shrink-0" /> : <FolderIcon className="size-4 shrink-0" />}
+        <span className="truncate">{name}</span>
+      </button>
+      <span className="text-xs tabular text-muted-foreground group-hover:hidden">{count}</span>
+      {folder && (
+        <button
+          className="hidden rounded p-0.5 text-muted-foreground hover:text-destructive group-hover:block"
+          title="Delete folder"
+          onClick={(e) => { e.stopPropagation(); deleteFolder(folder); }}
+        >
+          <Trash2 className="size-3.5" />
+        </button>
+      )}
+    </div>
+  );
+
   return (
-    <div className="flex h-[calc(100vh-8rem)]">
-      {/* Folders Sidebar */}
-      <div className="w-64 border-r pr-4 mr-4 flex flex-col gap-2">
-        <div className="flex items-center justify-between mb-4">
-          <h2 className="font-semibold text-lg">Folders</h2>
-          <Button variant="ghost" size="icon" onClick={() => setIsNewFolderOpen(true)}>
-            <Plus className="w-4 h-4" />
+    <div>
+      <PageHeader
+        title="Notes"
+        description="Trading ideas, plans and lessons learned"
+        actions={
+          <Button size="sm" onClick={createNote}>
+            <Plus /> New note
           </Button>
-        </div>
+        }
+      />
 
-        {isNewFolderOpen && (
-          <div className="flex gap-2 mb-2">
-            <Input 
-              autoFocus
-              placeholder="Folder name" 
-              value={newFolderName}
-              onChange={e => setNewFolderName(e.target.value)}
-              onKeyDown={e => e.key === 'Enter' && createFolder()}
-            />
-            <Button size="icon" onClick={createFolder}><Check className="w-4 h-4"/></Button>
+      <div className="flex flex-col gap-4 md:flex-row md:gap-6">
+        {/* Folders */}
+        <Panel className="h-fit shrink-0 p-3 md:w-60">
+          <div className="mb-2 flex items-center justify-between px-1">
+            <span className="text-xs font-medium text-muted-foreground">Folders</span>
+            <Button variant="ghost" size="icon-sm" onClick={() => setIsNewFolderOpen(v => !v)} title="New folder">
+              <Plus />
+            </Button>
           </div>
-        )}
 
-        <div className="flex flex-col gap-1 overflow-y-auto">
-          <button
-            onClick={() => setSelectedFolderId(null)}
-            className={`flex items-center gap-2 px-3 py-2 rounded-md text-sm transition-colors ${
-              selectedFolderId === null ? 'bg-secondary font-medium' : 'hover:bg-secondary/50 text-muted-foreground'
-            }`}
-          >
-            <FolderIcon className="w-4 h-4" />
-            All Notes
-          </button>
-          
-          {folders.map(folder => (
-            <div key={folder.id} className={`group flex items-center justify-between px-3 py-2 rounded-md text-sm transition-colors ${
-              selectedFolderId === folder.id ? 'bg-secondary font-medium' : 'hover:bg-secondary/50 text-muted-foreground'
-            }`}>
-              <button
-                onClick={() => setSelectedFolderId(folder.id)}
-                className="flex items-center gap-2 flex-1 text-left"
-              >
-                <FolderIcon className="w-4 h-4" />
-                {folder.name}
-              </button>
-              <Button 
-                variant="ghost" 
-                size="icon" 
-                className="h-6 w-6 opacity-0 group-hover:opacity-100" 
-                onClick={async (e) => {
-                  e.stopPropagation();
-                  if (confirm('Delete folder and all its notes?')) {
-                    await fetch(`/api/folders/${folder.id}`, { method: 'DELETE' });
-                    setFolders(folders.filter(f => f.id !== folder.id));
-                    if (selectedFolderId === folder.id) setSelectedFolderId(null);
-                    setNotes(notes.filter(n => n.folderId !== folder.id));
-                  }
+          {isNewFolderOpen && (
+            <div className="mb-2 flex gap-1.5">
+              <Input
+                autoFocus
+                className="h-8"
+                placeholder="Folder name"
+                value={newFolderName}
+                onChange={e => setNewFolderName(e.target.value)}
+                onKeyDown={e => {
+                  if (e.key === 'Enter') createFolder();
+                  if (e.key === 'Escape') setIsNewFolderOpen(false);
                 }}
-              >
-                <Trash2 className="w-3 h-3 text-destructive" />
-              </Button>
+              />
+              <Button size="icon-sm" onClick={createFolder} title="Create folder"><Check /></Button>
             </div>
-          ))}
-        </div>
-      </div>
+          )}
 
-      {/* Notes Grid */}
-      <div className="flex-1 flex flex-col">
-        <div className="flex justify-between items-center mb-6">
-          <h1 className="text-2xl font-bold">
-            {selectedFolderId ? folders.find(f => f.id === selectedFolderId)?.name : 'All Notes'}
-          </h1>
-          <Button onClick={createNote}>
-            <Plus className="w-4 h-4 mr-2" />
-            New Sticky Note
-          </Button>
-        </div>
+          <div className="flex flex-col gap-0.5">
+            {folderButton(null, 'All notes', notes.length)}
+            {folders.map(folder => folderButton(folder.id, folder.name, notes.filter(n => n.folderId === folder.id).length, folder))}
+          </div>
+        </Panel>
 
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4 overflow-y-auto pb-8 pr-2 content-start">
-          {filteredNotes.map(note => {
-            const colorClass = NOTE_COLORS.find(c => c.id === note.color) || NOTE_COLORS[0];
-            return (
-              <div 
-                key={note.id}
-                onClick={() => openNote(note)}
-                className={`group relative p-4 rounded-lg border shadow-sm cursor-pointer hover:shadow-md transition-all h-64 flex flex-col ${colorClass.bg} ${colorClass.border}`}
-              >
-                <div className="flex justify-between items-start mb-2">
-                  <h3 className="font-medium text-lg truncate pr-6">{note.title}</h3>
-                  <div className="opacity-0 group-hover:opacity-100 transition-opacity absolute top-3 right-3 flex gap-1">
-                    <DropdownMenu>
-                      <DropdownMenuTrigger asChild>
-                        <Button variant="ghost" size="icon" className="h-8 w-8 bg-background/50 hover:bg-background/80" onClick={e => e.stopPropagation()}>
-                          <MoreVertical className="w-4 h-4" />
-                        </Button>
-                      </DropdownMenuTrigger>
-                      <DropdownMenuContent align="end">
-                        <DropdownMenuItem onClick={(e) => { e.stopPropagation(); openNote(note); }}>
-                          <Edit2 className="w-4 h-4 mr-2" /> Edit
-                        </DropdownMenuItem>
-                        <DropdownMenuItem className="text-destructive" onClick={(e) => deleteNote(note.id, e)}>
-                          <Trash2 className="w-4 h-4 mr-2" /> Delete
-                        </DropdownMenuItem>
-                      </DropdownMenuContent>
-                    </DropdownMenu>
+        {/* Notes grid */}
+        <div className="min-w-0 flex-1">
+          <h2 className="mb-3 text-sm font-medium text-muted-foreground">
+            {selectedFolderId ? folders.find(f => f.id === selectedFolderId)?.name : 'All notes'}
+            <span className="ml-2 tabular">{filteredNotes.length}</span>
+          </h2>
+
+          {filteredNotes.length === 0 ? (
+            <Panel>
+              <EmptyState
+                icon={StickyNote}
+                title="No notes here yet"
+                description="Capture a trade idea, a plan for the week, or a lesson you don't want to repeat."
+                action={<Button size="sm" variant="outline" onClick={createNote}><Plus /> New note</Button>}
+              />
+            </Panel>
+          ) : (
+            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4">
+              {filteredNotes.map(note => {
+                const color = NOTE_COLORS.find(c => c.id === note.color) || NOTE_COLORS[0];
+                return (
+                  <div
+                    key={note.id}
+                    onClick={() => openNote(note)}
+                    className={cn(
+                      "group relative flex h-60 cursor-pointer flex-col overflow-hidden rounded-xl border border-border bg-card p-4 transition-colors hover:border-foreground/20",
+                      color.tint
+                    )}
+                  >
+                    <span className={cn("absolute inset-x-0 top-0 h-0.5", color.bar)} />
+                    <div className="mb-2 flex items-start justify-between gap-2">
+                      <h3 className="truncate font-medium">{note.title || 'Untitled'}</h3>
+                      <DropdownMenu>
+                        <DropdownMenuTrigger asChild>
+                          <Button
+                            variant="ghost"
+                            size="icon-sm"
+                            className="-mr-1 -mt-1 shrink-0 opacity-0 transition-opacity group-hover:opacity-100 data-[state=open]:opacity-100"
+                            onClick={e => e.stopPropagation()}
+                          >
+                            <MoreVertical />
+                          </Button>
+                        </DropdownMenuTrigger>
+                        <DropdownMenuContent align="end">
+                          <DropdownMenuItem onClick={(e) => { e.stopPropagation(); openNote(note); }}>
+                            <Edit2 className="mr-2 size-4" /> Edit
+                          </DropdownMenuItem>
+                          <DropdownMenuItem className="text-destructive" onClick={(e) => deleteNote(note.id, e)}>
+                            <Trash2 className="mr-2 size-4" /> Delete
+                          </DropdownMenuItem>
+                        </DropdownMenuContent>
+                      </DropdownMenu>
+                    </div>
+                    <div
+                      className="mask-bottom prose prose-sm dark:prose-invert tiptap-preview-wrapper max-w-none flex-1 overflow-hidden text-sm text-muted-foreground"
+                      dangerouslySetInnerHTML={{ __html: note.content }}
+                    />
+                    <div className="mt-3 flex items-center justify-between border-t border-border pt-2 text-xs text-muted-foreground">
+                      <span className="flex items-center gap-1.5">
+                        <span className={cn("size-2 rounded-full", color.dot)} />
+                        {new Date(note.updatedAt).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' })}
+                      </span>
+                      <Maximize2 className="size-3 opacity-50" />
+                    </div>
                   </div>
-                </div>
-                <div 
-                  className="text-sm text-foreground/80 flex-1 overflow-hidden mask-bottom prose dark:prose-invert prose-sm max-w-none tiptap-preview-wrapper"
-                  dangerouslySetInnerHTML={{ __html: note.content }}
-                />
-                <div className="text-xs text-muted-foreground mt-4 pt-2 border-t border-black/5 dark:border-white/5 flex justify-between items-center">
-                  <span>{new Date(note.updatedAt).toLocaleDateString()}</span>
-                  <Maximize2 className="w-3 h-3 opacity-50" />
-                </div>
-              </div>
-            );
-          })}
-          {filteredNotes.length === 0 && (
-            <div className="col-span-full h-40 flex items-center justify-center text-muted-foreground border-2 border-dashed rounded-lg">
-              No notes found. Create a new sticky note to get started!
+                );
+              })}
             </div>
           )}
         </div>
@@ -304,35 +337,40 @@ export default function NotesBoard() {
         if (!open) saveNote();
         setIsEditorOpen(open);
       }}>
-        <DialogContent className="max-w-7xl h-[90vh] flex flex-col">
+        <DialogContent className="flex h-[90vh] max-w-5xl flex-col gap-0 p-0 sm:max-w-5xl">
           <DialogTitle className="sr-only">Edit Note</DialogTitle>
-          <DialogHeader className="flex flex-col gap-2 border-b pb-4">
+          <DialogHeader className="flex flex-col gap-3 border-b border-border p-5 pr-12">
             <div className="flex flex-row items-center justify-between">
               <Input 
                 value={activeNote?.title || ''} 
                 onChange={e => activeNote && setActiveNote({...activeNote, title: e.target.value})}
-                className="text-xl font-bold border-none focus-visible:ring-0 shadow-none px-0"
+                className="h-auto border-none bg-transparent px-0 text-xl font-semibold shadow-none focus-visible:ring-0 dark:bg-transparent"
                 placeholder="Note Title"
               />
-              <Button onClick={() => { saveNote(); setIsEditorOpen(false); }}>Done</Button>
+              <Button size="sm" onClick={() => { saveNote(); setIsEditorOpen(false); }}>Done</Button>
             </div>
-            <div className="flex gap-4">
-              <select 
-                className="text-sm bg-background text-foreground border rounded p-1 outline-none focus:ring-1 focus:ring-primary"
-                value={activeNote?.folderId || ''}
-                onChange={e => activeNote && setActiveNote({...activeNote, folderId: e.target.value || null})}
+            <div className="flex items-center gap-4">
+              <Select
+                value={activeNote?.folderId || 'none'}
+                onValueChange={v => activeNote && setActiveNote({ ...activeNote, folderId: v === 'none' ? null : v })}
               >
-                <option value="">No Folder</option>
-                {folders.map(f => <option key={f.id} value={f.id}>{f.name}</option>)}
-              </select>
+                <SelectTrigger size="sm" className="w-44">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="none">No folder</SelectItem>
+                  {folders.map(f => <SelectItem key={f.id} value={f.id}>{f.name}</SelectItem>)}
+                </SelectContent>
+              </Select>
               
               <div className="flex items-center gap-1 ml-2">
                 {NOTE_COLORS.map(c => (
                   <button
                     key={c.id}
                     onClick={() => activeNote && setActiveNote({...activeNote, color: c.id})}
-                    className={`w-6 h-6 rounded-full border ${c.bg} ${c.border} ${activeNote?.color === c.id ? 'ring-2 ring-primary ring-offset-2 ring-offset-background' : 'opacity-70 hover:opacity-100'}`}
+                    className={cn("size-5 rounded-full", c.dot, activeNote?.color === c.id ? "ring-2 ring-foreground/60 ring-offset-2 ring-offset-background" : "opacity-60 hover:opacity-100")}
                     title={c.id}
+                    aria-label={`Colour ${c.id}`}
                   />
                 ))}
               </div>
@@ -340,52 +378,52 @@ export default function NotesBoard() {
           </DialogHeader>
           
           {/* Tiptap Toolbar */}
-          <div className="flex gap-2 p-2 border-b bg-muted/30 flex-wrap">
-            <Button variant="outline" size="icon" title="Bold" onMouseDown={e => e.preventDefault()} onClick={() => editor?.chain().focus().toggleBold().run()} className={editor?.isActive('bold') ? 'bg-secondary' : ''}>
+          <div className="flex flex-wrap gap-1.5 border-b border-border bg-secondary/40 px-5 py-2">
+            <Button variant="ghost" size="icon-sm" title="Bold" onMouseDown={e => e.preventDefault()} onClick={() => editor?.chain().focus().toggleBold().run()} className={editor?.isActive('bold') ? 'bg-accent text-foreground' : ''}>
               <Bold className="w-4 h-4" />
             </Button>
-            <Button variant="outline" size="icon" title="Italic" onMouseDown={e => e.preventDefault()} onClick={() => editor?.chain().focus().toggleItalic().run()} className={editor?.isActive('italic') ? 'bg-secondary' : ''}>
+            <Button variant="ghost" size="icon-sm" title="Italic" onMouseDown={e => e.preventDefault()} onClick={() => editor?.chain().focus().toggleItalic().run()} className={editor?.isActive('italic') ? 'bg-accent text-foreground' : ''}>
               <Italic className="w-4 h-4" />
             </Button>
-            <Button variant="outline" size="icon" title="Heading 2" onMouseDown={e => e.preventDefault()} onClick={() => editor?.chain().focus().toggleHeading({ level: 2 }).run()} className={editor?.isActive('heading', { level: 2 }) ? 'bg-secondary' : ''}>
+            <Button variant="ghost" size="icon-sm" title="Heading 2" onMouseDown={e => e.preventDefault()} onClick={() => editor?.chain().focus().toggleHeading({ level: 2 }).run()} className={editor?.isActive('heading', { level: 2 }) ? 'bg-accent text-foreground' : ''}>
               <Heading2 className="w-4 h-4" />
             </Button>
-            <Button variant="outline" size="icon" title="Bullet List" onMouseDown={e => e.preventDefault()} onClick={() => editor?.chain().focus().toggleBulletList().run()} className={editor?.isActive('bulletList') ? 'bg-secondary' : ''}>
+            <Button variant="ghost" size="icon-sm" title="Bullet List" onMouseDown={e => e.preventDefault()} onClick={() => editor?.chain().focus().toggleBulletList().run()} className={editor?.isActive('bulletList') ? 'bg-accent text-foreground' : ''}>
               <List className="w-4 h-4" />
             </Button>
             
             <div className="w-px h-6 bg-border mx-2 self-center" />
             
-            <Button variant="outline" size="sm" className="h-8 gap-1 px-2" title="Insert Table" onMouseDown={e => e.preventDefault()} onClick={() => editor?.chain().focus().insertTable({ rows: 3, cols: 3, withHeaderRow: true }).run()}>
+            <Button variant="ghost" size="sm" className="h-8 gap-1 px-2" title="Insert Table" onMouseDown={e => e.preventDefault()} onClick={() => editor?.chain().focus().insertTable({ rows: 3, cols: 3, withHeaderRow: true }).run()}>
               <TableIcon className="w-4 h-4" /> <span className="text-xs">Table</span>
             </Button>
-            <Button variant="outline" size="sm" className="h-8 gap-1 px-2" title="Add Column" onMouseDown={e => e.preventDefault()} onClick={() => editor?.chain().focus().addColumnBefore().run()} disabled={!editor?.can().addColumnBefore()}>
+            <Button variant="ghost" size="sm" className="h-8 gap-1 px-2" title="Add Column" onMouseDown={e => e.preventDefault()} onClick={() => editor?.chain().focus().addColumnBefore().run()} disabled={!editor?.can().addColumnBefore()}>
               <Plus className="w-3 h-3" /> <span className="text-xs">Col</span>
             </Button>
-            <Button variant="outline" size="sm" className="h-8 gap-1 px-2 text-destructive" title="Delete Column" onMouseDown={e => e.preventDefault()} onClick={() => editor?.chain().focus().deleteColumn().run()} disabled={!editor?.can().deleteColumn()}>
+            <Button variant="ghost" size="sm" className="h-8 gap-1 px-2 text-destructive" title="Delete Column" onMouseDown={e => e.preventDefault()} onClick={() => editor?.chain().focus().deleteColumn().run()} disabled={!editor?.can().deleteColumn()}>
               <Minus className="w-3 h-3" /> <span className="text-xs">Col</span>
             </Button>
             <div className="w-px h-6 bg-border mx-1 self-center" />
-            <Button variant="outline" size="sm" className="h-8 gap-1 px-2" title="Add Row" onMouseDown={e => e.preventDefault()} onClick={() => editor?.chain().focus().addRowAfter().run()} disabled={!editor?.can().addRowAfter()}>
+            <Button variant="ghost" size="sm" className="h-8 gap-1 px-2" title="Add Row" onMouseDown={e => e.preventDefault()} onClick={() => editor?.chain().focus().addRowAfter().run()} disabled={!editor?.can().addRowAfter()}>
               <Plus className="w-3 h-3" /> <span className="text-xs">Row</span>
             </Button>
-            <Button variant="outline" size="sm" className="h-8 gap-1 px-2 text-destructive" title="Delete Row" onMouseDown={e => e.preventDefault()} onClick={() => editor?.chain().focus().deleteRow().run()} disabled={!editor?.can().deleteRow()}>
+            <Button variant="ghost" size="sm" className="h-8 gap-1 px-2 text-destructive" title="Delete Row" onMouseDown={e => e.preventDefault()} onClick={() => editor?.chain().focus().deleteRow().run()} disabled={!editor?.can().deleteRow()}>
               <Minus className="w-3 h-3" /> <span className="text-xs">Row</span>
             </Button>
             <div className="w-px h-6 bg-border mx-1 self-center" />
-            <Button variant="outline" size="sm" className="h-8 gap-1 px-2" title="Merge Cells" onMouseDown={e => e.preventDefault()} onClick={() => editor?.chain().focus().mergeCells().run()} disabled={!editor?.can().mergeCells()}>
+            <Button variant="ghost" size="sm" className="h-8 gap-1 px-2" title="Merge Cells" onMouseDown={e => e.preventDefault()} onClick={() => editor?.chain().focus().mergeCells().run()} disabled={!editor?.can().mergeCells()}>
               <Combine className="w-4 h-4" /> <span className="text-xs">Merge</span>
             </Button>
-            <Button variant="outline" size="sm" className="h-8 gap-1 px-2" title="Split Cell" onMouseDown={e => e.preventDefault()} onClick={() => editor?.chain().focus().splitCell().run()} disabled={!editor?.can().splitCell()}>
+            <Button variant="ghost" size="sm" className="h-8 gap-1 px-2" title="Split Cell" onMouseDown={e => e.preventDefault()} onClick={() => editor?.chain().focus().splitCell().run()} disabled={!editor?.can().splitCell()}>
               <SplitSquareHorizontal className="w-4 h-4" /> <span className="text-xs">Split</span>
             </Button>
-            <Button variant="outline" size="icon" title="Delete Table" className="text-destructive ml-auto" onMouseDown={e => e.preventDefault()} onClick={() => editor?.chain().focus().deleteTable().run()} disabled={!editor?.can().deleteTable()}>
+            <Button variant="ghost" size="icon-sm" title="Delete Table" className="text-destructive ml-auto" onMouseDown={e => e.preventDefault()} onClick={() => editor?.chain().focus().deleteTable().run()} disabled={!editor?.can().deleteTable()}>
               <Trash className="w-4 h-4" />
             </Button>
           </div>
 
-          <div className="flex-1 overflow-y-auto p-4 tiptap-editor-wrapper">
-            <EditorContent editor={editor} className="min-h-full outline-none prose dark:prose-invert max-w-none" />
+          <div className="tiptap-editor-wrapper flex-1 overflow-y-auto px-5 py-4">
+            <EditorContent editor={editor} className="prose prose-sm dark:prose-invert min-h-full max-w-none outline-none sm:prose-base" />
           </div>
         </DialogContent>
       </Dialog>
@@ -444,7 +482,7 @@ export default function NotesBoard() {
         }
 
         .tiptap p.is-editor-empty:first-child::before {
-          color: #adb5bd;
+          color: var(--muted-foreground);
           content: attr(data-placeholder);
           float: left;
           height: 0;
