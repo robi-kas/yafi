@@ -211,22 +211,51 @@ export default function SettingsPage() {
         setImportResult(null)
         
         try {
-            const formData = new FormData()
-            formData.append('file', file)
-
-            const res = await fetch('/api/db/import', {
-                method: 'POST',
-                body: formData
-            })
-
-            const data = await res.json()
-            
-            if (!res.ok) {
-                throw new Error(data.error || 'Import failed')
+            let parsed: any
+            try {
+                parsed = JSON.parse(await file.text())
+            } catch {
+                throw new Error('Selected file is not valid JSON')
+            }
+            if (!parsed || (!parsed.trades && !parsed.accounts && !parsed.strategies)) {
+                throw new Error('Invalid import file format')
             }
 
-            setImportResult({ success: data.saved, errors: data.errors || [] })
-            if (data.saved > 0) {
+            // Screenshots are not restored by the importer and make exports huge
+            // (base64 images). Strip them and send in batches so each request
+            // stays under Vercel's 4.5 MB serverless body limit.
+            const trades: any[] = (parsed.trades || []).map(({ screenshots, ...t }: any) => t)
+            const batches: any[] = [{ accounts: parsed.accounts || [], strategies: parsed.strategies || [] }]
+            const BATCH_SIZE = 50
+            for (let i = 0; i < trades.length; i += BATCH_SIZE) {
+                batches.push({ trades: trades.slice(i, i + BATCH_SIZE) })
+            }
+
+            let saved = 0
+            const errors: string[] = []
+            for (const batch of batches) {
+                if (!batch.trades?.length && !batch.accounts?.length && !batch.strategies?.length) continue
+                const res = await fetch('/api/db/import', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(batch)
+                })
+                const text = await res.text()
+                let data: any
+                try {
+                    data = JSON.parse(text)
+                } catch {
+                    throw new Error(`Server error (${res.status}): ${text.slice(0, 200)}`)
+                }
+                if (!res.ok) {
+                    throw new Error(data.error || 'Import failed')
+                }
+                saved += data.saved || 0
+                errors.push(...(data.errors || []))
+            }
+
+            setImportResult({ success: saved, errors })
+            if (saved > 0) {
                 await refreshMetrics()
             }
         } catch (err: any) {
