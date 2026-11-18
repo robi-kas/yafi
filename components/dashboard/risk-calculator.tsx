@@ -48,7 +48,8 @@ const ASSET_CONFIGS: Record<AssetType, {
     crypto: { name: "Crypto", multiplier: 1, pipDecimal: 2, label: "Price", unit: "Units" }
 }
 
-export function PositionSizeCalculator({ initialBalance: propBalance }: RiskCalculatorProps) {
+export function PositionSizeCalculator({ initialBalance: rawBalance }: RiskCalculatorProps) {
+    const propBalance = typeof rawBalance === "number" ? Math.round(rawBalance * 100) / 100 : rawBalance
     const { accounts, selectedAccountId } = useDashboard()
 
     const activeAccount = accounts.find(a => a.id === selectedAccountId)
@@ -141,23 +142,24 @@ export function PositionSizeCalculator({ initialBalance: propBalance }: RiskCalc
     }, [balance, riskMode, riskValue, assetType, usePrice, entryPrice, stopLossPrice, takeProfitPrice, manualPips])
 
     return (
-        <div className="bg-card/50 backdrop-blur-sm border border-border/50 rounded-xl p-5 h-full flex flex-col shadow-2xl overflow-hidden group">
+        <div className="bg-card border border-border rounded-xl p-5 h-full flex flex-col overflow-hidden">
             {/* Header */}
             <div className="flex items-center justify-between mb-6">
                 <div className="flex items-center gap-2">
-                    <div className="p-2 bg-emerald-500/10 rounded-lg">
-                        <Calculator className="w-5 h-5 text-emerald-500" />
+                    <div className="flex size-7 items-center justify-center rounded-md bg-secondary text-muted-foreground">
+                        <Calculator className="size-4" />
                     </div>
                     <div>
-                        <h3 className="text-sm font-bold tracking-tight">Risk Calculator</h3>
-                        <p className="text-[10px] text-muted-foreground uppercase tracking-widest font-mono">Precision Position Sizing</p>
+                        <h3 className="text-sm font-medium">Position size calculator</h3>
+                        <p className="text-xs text-muted-foreground">Lot size from your risk and stop distance</p>
                     </div>
                 </div>
                 <div className="flex gap-1">
                     <Button
                         variant="ghost"
                         size="icon"
-                        className="h-7 w-7 rounded-md hover:bg-emerald-500/10 hover:text-emerald-500 text-muted-foreground dark:text-muted-foreground"
+                        className="h-7 w-7 rounded-md text-muted-foreground hover:text-foreground"
+                        title="Reset"
                         onClick={() => {
                             setRiskValue(1)
                             setManualPips(10)
@@ -181,7 +183,7 @@ export function PositionSizeCalculator({ initialBalance: propBalance }: RiskCalc
                             <div className="space-y-2">
                                 <Label className="text-[11px] uppercase font-mono text-muted-foreground font-bold tracking-wider">Asset Class</Label>
                                 <Select value={assetType} onValueChange={(v: AssetType) => setAssetType(v)}>
-                                    <SelectTrigger className="h-10 bg-slate-100/50 dark:bg-slate-800/50 border-slate-200 dark:border-slate-700 font-mono text-xs">
+                                    <SelectTrigger className="h-10 bg-background border-input font-mono text-xs">
                                         <SelectValue />
                                     </SelectTrigger>
                                     <SelectContent>
@@ -195,12 +197,12 @@ export function PositionSizeCalculator({ initialBalance: propBalance }: RiskCalc
                             <div className="space-y-2">
                                 <Label className="text-[11px] uppercase font-mono text-muted-foreground font-bold tracking-wider">Account Balance</Label>
                                 <div className="relative">
-                                    <DollarSign className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-emerald-600 dark:text-emerald-500/50" />
+                                    <DollarSign className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-profit/50" />
                                     <Input
                                         type="number"
                                         value={balance}
                                         onChange={(e) => setBalance(Number(e.target.value))}
-                                        className="h-11 pl-9 bg-slate-100/50 dark:bg-slate-800/50 border-slate-200 dark:border-slate-700 font-mono text-base font-bold text-emerald-600 dark:text-emerald-400 focus-visible:ring-emerald-500/20"
+                                        className="h-11 pl-9 bg-background border-input font-mono text-base font-bold text-profit focus-visible:ring-ring/40"
                                     />
                                 </div>
                             </div>
@@ -211,7 +213,7 @@ export function PositionSizeCalculator({ initialBalance: propBalance }: RiskCalc
                                 Risk Commitment
                                 <span className={cn(
                                     "font-black tracking-tighter text-sm",
-                                    riskMode === "percent" ? "text-emerald-600 dark:text-emerald-400" : "text-emerald-600/80 dark:text-emerald-400/80"
+                                    riskMode === "percent" ? "text-profit" : "text-muted-foreground"
                                 )}>
                                     ${calc.cashRisk.toFixed(2)}
                                 </span>
@@ -223,7 +225,7 @@ export function PositionSizeCalculator({ initialBalance: propBalance }: RiskCalc
                                     onClick={() => setRiskMode("percent")}
                                     className={cn(
                                         "flex-1 h-9 text-[11px] uppercase tracking-widest font-black transition-all",
-                                        riskMode === "percent" ? "bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 shadow-sm" : "text-muted-foreground/60 hover:text-muted-foreground"
+                                        riskMode === "percent" ? "bg-brand-soft text-brand shadow-sm" : "text-muted-foreground/60 hover:text-muted-foreground"
                                     )}
                                 >
                                     Percent (%)
@@ -234,7 +236,7 @@ export function PositionSizeCalculator({ initialBalance: propBalance }: RiskCalc
                                     onClick={() => setRiskMode("fixed")}
                                     className={cn(
                                         "flex-1 h-9 text-[11px] uppercase tracking-widest font-black transition-all",
-                                        riskMode === "fixed" ? "bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 shadow-sm" : "text-muted-foreground/60 hover:text-muted-foreground"
+                                        riskMode === "fixed" ? "bg-brand-soft text-brand shadow-sm" : "text-muted-foreground/60 hover:text-muted-foreground"
                                     )}
                                 >
                                     Amount ($)
@@ -250,7 +252,7 @@ export function PositionSizeCalculator({ initialBalance: propBalance }: RiskCalc
                                     type="number"
                                     value={riskValue}
                                     onChange={(e) => setRiskValue(Number(e.target.value))}
-                                    className="h-11 pl-9 bg-slate-100/50 dark:bg-slate-800/50 border-slate-200 dark:border-slate-700 font-mono text-base font-bold focus:ring-2 focus:ring-emerald-500/20 text-emerald-600 dark:text-emerald-400"
+                                    className="h-11 pl-9 bg-background border-input font-mono text-base font-bold focus:ring-2 focus:ring-ring/40 text-profit"
                                 />
                             </div>
                         </div>
@@ -263,7 +265,7 @@ export function PositionSizeCalculator({ initialBalance: propBalance }: RiskCalc
                             <Button
                                 variant="ghost"
                                 size="sm"
-                                className="h-5 px-2 text-[9px] uppercase font-mono text-emerald-500/70 hover:text-emerald-500"
+                                className="h-5 px-2 text-[9px] uppercase font-mono text-muted-foreground hover:text-foreground"
                                 onClick={() => setUsePrice(!usePrice)}
                             >
                                 <ArrowRightLeft className="w-2.5 h-2.5 mr-1" />
@@ -278,20 +280,20 @@ export function PositionSizeCalculator({ initialBalance: propBalance }: RiskCalc
                                         placeholder="Entry"
                                         value={entryPrice}
                                         onChange={(e) => setEntryPrice(e.target.value)}
-                                        className="h-11 bg-slate-100/50 dark:bg-slate-800/50 border-slate-200 dark:border-slate-700 font-mono text-sm font-bold text-slate-700 dark:text-slate-300"
+                                        className="h-11 bg-background border-input font-mono text-sm font-bold"
                                     />
                                     <Input
                                         placeholder="Stop Loss"
                                         value={stopLossPrice}
                                         onChange={(e) => setStopLossPrice(e.target.value)}
-                                        className="h-11 border-red-200 dark:border-red-900/30 bg-red-50 dark:bg-red-950/30 font-mono text-sm font-bold focus-visible:ring-red-500/30 text-red-600 dark:text-red-400 placeholder:text-red-400 dark:placeholder:text-red-900/50"
+                                        className="h-11 border-loss/25 bg-loss/5 font-mono text-sm font-bold focus-visible:ring-loss/30 text-loss placeholder:text-loss/40"
                                     />
                                 </div>
                                 <Input
                                     placeholder="Take Profit (Optional)"
                                     value={takeProfitPrice}
                                     onChange={(e) => setTakeProfitPrice(e.target.value)}
-                                    className="h-11 border-emerald-200 dark:border-emerald-900/30 bg-emerald-50 dark:bg-emerald-950/30 font-mono text-sm font-bold focus-visible:ring-emerald-500/30 text-emerald-600 dark:text-emerald-400 placeholder:text-emerald-400 dark:placeholder:text-emerald-900/50"
+                                    className="h-11 border-profit/25 bg-profit/5 font-mono text-sm font-bold focus-visible:ring-profit/30 text-profit placeholder:text-profit/40"
                                 />
                             </div>
                         ) : (
@@ -302,14 +304,14 @@ export function PositionSizeCalculator({ initialBalance: propBalance }: RiskCalc
                                     placeholder={calc.config.label}
                                     value={manualPips}
                                     onChange={(e) => setManualPips(Number(e.target.value))}
-                                    className="h-11 pl-10 bg-slate-100/50 dark:bg-slate-800/50 border-slate-200 dark:border-slate-700 font-mono text-base font-bold text-slate-700 dark:text-slate-300"
+                                    className="h-11 pl-10 bg-background border-input font-mono text-base font-bold"
                                 />
                             </div>
                         )}
                     </div>
 
                     <Button
-                        className="w-full h-10 bg-emerald-600 hover:bg-emerald-500 text-white font-bold tracking-wide uppercase text-[11px] shadow-lg shadow-emerald-500/10 group-hover:scale-[1.02] transition-transform mt-2"
+                        className="w-full h-10 mt-2"
                         onClick={() => {
                             // Feedback for calculation
                         }}
@@ -321,65 +323,63 @@ export function PositionSizeCalculator({ initialBalance: propBalance }: RiskCalc
 
                 {/* Right Column: Dynamic Results */}
                 <div className="flex flex-col gap-4">
-                    <div className="flex-1 rounded-xl bg-background/40 border border-border/50 p-5 space-y-8 relative overflow-hidden group/card">
+                    <div className="flex-1 rounded-lg bg-background/60 border border-border p-5 space-y-6 relative overflow-hidden">
                         {/* Background Glow */}
-                        <div className="absolute top-0 right-0 w-32 h-32 bg-emerald-500/5 blur-[40px] rounded-full -mr-16 -mt-16 pointer-events-none group-hover/card:bg-emerald-500/10 transition-all duration-700" />
-
+                        
                         <div className="space-y-2">
-                            <span className="text-[11px] uppercase tracking-widest text-muted-foreground font-mono font-bold">Recommended Size</span>
-                            <div className="flex items-baseline gap-3">
-                                <span className="text-5xl font-black font-mono tracking-tighter bg-gradient-to-br from-foreground to-foreground/50 bg-clip-text text-transparent">
+                            <span className="text-xs font-medium text-muted-foreground">Recommended size</span>
+                            <div className="flex min-w-0 items-baseline gap-2">
+                                <span className="truncate text-4xl font-semibold font-mono tracking-tight tabular text-foreground">
                                     {calc.lotSize.toFixed(4)}
                                 </span>
-                                <span className="text-lg font-bold text-emerald-600/70 dark:text-emerald-500/70">{calc.config.unit}</span>
+                                <span className="text-base font-medium text-brand">{calc.config.unit}</span>
                             </div>
                         </div>
 
                         <div className="flex flex-col gap-3">
-                            <div className="p-4 bg-red-500/5 dark:bg-red-500/10 border border-red-500/10 rounded-xl space-y-1">
+                            <div className="p-4 bg-loss/5 border border-loss/15 rounded-lg space-y-1">
                                 <div className="flex items-center gap-1.5">
-                                    <TrendingDown className="w-3.5 h-3.5 text-red-600 dark:text-red-500" />
-                                    <span className="text-[10px] uppercase font-bold text-red-600/90 dark:text-red-500/90 tracking-tight">Potential Loss</span>
+                                    <TrendingDown className="w-3.5 h-3.5 text-loss" />
+                                    <span className="text-[10px] uppercase font-bold text-loss tracking-tight">Potential Loss</span>
                                 </div>
-                                <div className="text-2xl font-mono font-black text-red-600 dark:text-red-400 leading-none py-1 truncate">
-                                    -${calc.cashRisk.toLocaleString(undefined, { minimumFractionDigits: 2 })}
+                                <div className="text-2xl font-mono font-semibold tabular text-loss leading-none py-1 truncate">
+                                    -${calc.cashRisk.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                                 </div>
-                                <div className="text-[9px] text-red-600/50 dark:text-red-500/50 font-mono font-bold">{calc.slDistance.toFixed(1)} {calc.config.label}</div>
+                                <div className="text-[9px] text-loss/60 font-mono font-bold">{calc.slDistance.toFixed(1)} {calc.config.label}</div>
                             </div>
 
-                            <div className="p-4 bg-emerald-500/5 dark:bg-emerald-500/10 border border-emerald-500/10 rounded-xl space-y-1">
+                            <div className="p-4 bg-profit/5 border border-profit/15 rounded-lg space-y-1">
                                 <div className="flex items-center gap-1.5">
-                                    <TrendingUp className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-500" />
-                                    <span className="text-[10px] uppercase font-bold text-emerald-600/90 dark:text-emerald-500/90 tracking-tight">Potential Profit</span>
+                                    <TrendingUp className="w-3.5 h-3.5 text-profit" />
+                                    <span className="text-[10px] uppercase font-bold text-profit tracking-tight">Potential Profit</span>
                                 </div>
-                                <div className="text-2xl font-mono font-black text-emerald-600 dark:text-emerald-400 leading-none py-1 truncate">
-                                    +${calc.potentialProfit.toLocaleString(undefined, { minimumFractionDigits: 2 })}
+                                <div className="text-2xl font-mono font-semibold tabular text-profit leading-none py-1 truncate">
+                                    +${calc.potentialProfit.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                                 </div>
-                                <div className="text-[9px] text-emerald-600/50 dark:text-emerald-500/50 font-mono font-bold">
+                                <div className="text-[9px] text-profit/60 font-mono font-bold">
                                     {calc.tpDistance > 0 ? `${calc.tpDistance.toFixed(1)} ${calc.config.label}` : "N/A"}
                                 </div>
                             </div>
                         </div>
 
-                        <div className="flex items-center justify-between p-4 bg-foreground/5 dark:bg-black/40 rounded-xl border border-border/50">
+                        <div className="flex items-center justify-between p-4 bg-secondary/50 rounded-lg border border-border">
                             <div className="flex items-center gap-2">
                                 <div className="p-1.5 bg-background border border-border/50 rounded-md">
-                                    <ShieldCheck className="w-4 h-4 text-emerald-500" />
+                                    <ShieldCheck className="w-4 h-4 text-brand" />
                                 </div>
                                 <span className="text-[11px] uppercase font-bold tracking-tight text-muted-foreground">Reward Ratio</span>
                             </div>
                             <div className={cn(
-                                "font-mono font-black text-2xl truncate ml-2",
-                                calc.rr >= 3 ? "text-emerald-400" : calc.rr >= 2 ? "text-blue-400" : "text-muted-foreground"
+                                "font-mono font-semibold tabular text-2xl truncate ml-2",
+                                calc.rr >= 3 ? "text-profit" : calc.rr >= 2 ? "text-blue-400" : "text-muted-foreground"
                             )}>
                                 {calc.rr > 0 ? `1:${calc.rr.toFixed(1)}` : "TBD"}
                             </div>
                         </div>
                     </div>
 
-                    <div className="flex items-center gap-2 px-3 py-2 bg-emerald-500/5 rounded-lg border border-emerald-500/10 animate-pulse">
-                        <Zap className="w-3 h-3 text-emerald-500 fill-emerald-500" />
-                        <p className="text-[9px] text-emerald-500/80 font-medium">Calculations based on standard contract sizes.</p>
+                    <div className="flex items-center gap-2 px-1">
+                        <p className="text-[11px] text-muted-foreground">Calculations based on standard contract sizes.</p>
                     </div>
                 </div>
             </div>

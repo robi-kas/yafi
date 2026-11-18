@@ -1,459 +1,446 @@
 "use client"
 
-import React, { useState } from "react"
+import React, { useMemo, useState } from "react"
+import Link from "next/link"
 import { DashboardLayout } from "@/components/dashboard/dashboard-layout"
-import { GlanceCard } from "@/components/dashboard/glance-card"
-import { TrendingUp, TrendingDown, Target, RefreshCw, Trophy, Zap, Trash2 } from "@/components/icons"
-import { useDashboard, Trade, Account, Strategy } from "@/context/dashboard-context"
+import { useDashboard, Trade, Account } from "@/context/dashboard-context"
 import { Button } from "@/components/ui/button"
-import { PositionSizeCalculator as LotSizeCalculator } from "@/components/dashboard/risk-calculator"
+import { Input } from "@/components/ui/input"
+import { Label } from "@/components/ui/label"
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog"
+import { PositionSizeCalculator } from "@/components/dashboard/risk-calculator"
 import { EquityCurveChart } from "@/components/dashboard/trading-charts"
-import { TradeDashboard } from "@/components/TradeDashboard"
 import BounceLoader from "@/components/ui/bounce-loader"
+import {
+  Page,
+  PageHeader,
+  Panel,
+  PanelHeader,
+  PanelBody,
+  StatCard,
+  EmptyState,
+  ResultBadge,
+  DirectionBadge,
+  formatMoney,
+  pnlTone,
+} from "@/components/kit"
+import {
+  Plus,
+  RefreshCw,
+  Wallet,
+  BookOpen,
+  Target,
+  Trophy,
+  Flame,
+  TrendingUp,
+  TrendingDown,
+  Edit2,
+  Trash2,
+  ArrowRight,
+  LineChart,
+} from "@/components/icons"
+import { calculateMetrics, calcResult } from "@/lib/trading-metrics"
+import { useCurrentUser } from "@/hooks/use-current-user"
+import { cn } from "@/lib/utils"
 
-function TradingDashboardInner() {
-  const { trades, accounts, strategies, performanceMetrics, updateMetrics, updateAccount, deleteAccount, addNotification, addAccount, isLoading } = useDashboard()
-  const [editingAccountId, setEditingAccountId] = useState<string | null>(null)
-  const [showLinkModal, setShowLinkModal] = useState(false)
-  const [editName, setEditName] = useState("")
-  const [editBroker, setEditBroker] = useState("")
-  const [editBalance, setEditBalance] = useState<string>("")
-  const [showManualModal, setShowManualModal] = useState(false)
-  const [manualAccount, setManualAccount] = useState({ name: "", broker: "Exness", balance: 0 })
+function greeting() {
+  const h = new Date().getHours()
+  return h < 12 ? "Good morning" : h < 18 ? "Good afternoon" : "Good evening"
+}
 
-  const startEdit = (account: Account) => {
-    setEditingAccountId(account.id)
-    setEditName(account.name || "")
-    setEditBroker(account.broker || "")
-    setEditBalance(String(account.balance ?? ""))
-  }
+function strategyName(t: Trade) {
+  return typeof t.strategy === "string" ? t.strategy : (t.strategy as any)?.name || ""
+}
 
-  const cancelEdit = () => {
-    setEditingAccountId(null)
-    setEditName("")
-    setEditBroker("")
-    setEditBalance("")
-  }
+function DashboardInner() {
+  const { trades, accounts, performanceMetrics, updateMetrics, updateAccount, deleteAccount, addAccount, addNotification, isLoading } =
+    useDashboard()
+  const user = useCurrentUser()
+  const name = (user?.user_metadata?.full_name as string | undefined) || user?.email?.split("@")[0] || ""
 
-  const saveEdit = async (id: string) => {
-    const parsed = Number(editBalance.replace(/[^0-9.-]+/g, '')) || 0
-    if (!updateAccount) {
-      cancelEdit()
-      return
+  const [accountDialog, setAccountDialog] = useState<{ mode: "add" | "edit"; account?: Account } | null>(null)
+  const [form, setForm] = useState({ name: "", broker: "", balance: "" })
+
+  const m = useMemo(() => calculateMetrics(trades as any), [trades])
+
+  // P&L per account, so each account card shows its own balance.
+  const pnlByAccount = useMemo(() => {
+    const map: Record<string, number> = {}
+    for (const t of trades) if (t.accountId) map[t.accountId] = (map[t.accountId] || 0) + (t.profitLoss || 0)
+    return map
+  }, [trades])
+
+  const recent = useMemo(
+    () => [...trades].sort((a, b) => new Date(b.entryTime).getTime() - new Date(a.entryTime).getTime()).slice(0, 6),
+    [trades]
+  )
+
+  const highlights = useMemo(() => {
+    const byStrategy: Record<string, { pnl: number; n: number; wins: number }> = {}
+    for (const t of trades) {
+      const s = strategyName(t)
+      if (!s) continue
+      byStrategy[s] ??= { pnl: 0, n: 0, wins: 0 }
+      byStrategy[s].pnl += t.profitLoss || 0
+      byStrategy[s].n++
+      if (calcResult(t) === "win") byStrategy[s].wins++
     }
+    const best = Object.entries(byStrategy).sort((a, b) => b[1].pnl - a[1].pnl)[0]
 
+    // Current streak, newest trade first, ignoring breakevens.
+    let streak = 0
+    let streakKind: "win" | "loss" | null = null
+    for (const t of recent.length ? [...trades].sort((a, b) => new Date(b.entryTime).getTime() - new Date(a.entryTime).getTime()) : []) {
+      const r = calcResult(t)
+      if (r === "breakeven") continue
+      if (!streakKind) streakKind = r
+      if (r !== streakKind) break
+      streak++
+    }
+    return { best, streak, streakKind }
+  }, [trades, recent])
+
+  const balance = performanceMetrics.netBalance
+  const roi = performanceMetrics.roi || 0
+  const decided = m.wins + m.losses
+  const winRate = decided ? (m.wins / decided) * 100 : 0
+
+  const openAdd = () => {
+    setForm({ name: "", broker: "", balance: "" })
+    setAccountDialog({ mode: "add" })
+  }
+  const openEdit = (a: Account) => {
+    setForm({ name: a.name || "", broker: a.broker || "", balance: String(a.balance ?? "") })
+    setAccountDialog({ mode: "edit", account: a })
+  }
+  const saveAccount = async () => {
+    const payload = { name: form.name.trim(), broker: form.broker.trim(), balance: Number(form.balance.replace(/[^0-9.-]+/g, "")) || 0 }
+    if (!payload.name) return
     try {
-      await updateAccount(id, { name: editName, broker: editBroker, balance: parsed })
-      cancelEdit()
-    } catch (err) {
-      cancelEdit()
-    }
-  }
-
-  // Build glance cards from performance metrics
-  const glanceCards = [
-    {
-      title: "Win Rate",
-      value: performanceMetrics.winRate,
-      change: performanceMetrics.winRateChange ?? 0,
-      suffix: "%",
-      sparklineData: performanceMetrics.sparklineData.map((v: number) => Math.max(0, v)), // Showing win distribution
-    },
-    {
-      title: "Profit Factor",
-      value: performanceMetrics.profitFactor,
-      change: performanceMetrics.profitFactorChange || 0,
-      suffix: "x",
-      sparklineData: performanceMetrics.sparklineData,
-    },
-    {
-      title: "Avg Win",
-      value: performanceMetrics.avgWin,
-      change: performanceMetrics.avgWinChange ?? 0,
-      prefix: "$",
-      sparklineData: performanceMetrics.sparklineData.filter((v: number) => v > 0),
-    },
-    {
-      title: "Net Balance",
-      value: performanceMetrics.netBalance,
-      change: performanceMetrics.roi,
-      prefix: "$",
-      sparklineData: (performanceMetrics.sparklineData && performanceMetrics.sparklineData.length > 0)
-        ? performanceMetrics.sparklineData.map((v: number, i: number, arr: number[]) => {
-          return performanceMetrics.totalDeposit + arr.slice(0, i + 1).reduce((a, b) => a + b, 0);
-        })
-        : [performanceMetrics.totalDeposit, performanceMetrics.netBalance],
-    },
-  ]
-
-  let bestStrategy: any = null;
-  if (trades.length > 0) {
-    const strategyStats: Record<string, { name: string, wins: number, total: number, profit: number }> = {};
-    trades.forEach(t => {
-      if (t.tradeStatus !== 'open') {
-        const sName = typeof t.strategy === 'string' ? t.strategy : (t.strategy as any)?.name || 'Unknown';
-        if (!strategyStats[sName]) strategyStats[sName] = { name: sName, wins: 0, total: 0, profit: 0 };
-        strategyStats[sName].total++;
-        if (t.result === 'win' || (t.profitLoss && t.profitLoss > 0)) strategyStats[sName].wins++;
-        strategyStats[sName].profit += (t.profitLoss || 0);
+      if (accountDialog?.mode === "edit" && accountDialog.account) {
+        await updateAccount(accountDialog.account.id, payload)
+      } else {
+        await addAccount({ ...payload, type: "personal" } as Partial<Account>)
+        addNotification({ title: "Account added", message: `${payload.name} was added.`, type: "success" })
       }
-    });
-    let bestStat = null;
-    for (const key in strategyStats) {
-      if (strategyStats[key].total > 0) {
-        if (!bestStat || strategyStats[key].profit > bestStat.profit) bestStat = strategyStats[key];
-      }
-    }
-    if (bestStat) {
-      bestStrategy = {
-        name: bestStat.name,
-        winRate: (bestStat.wins / bestStat.total) * 100,
-        trades: bestStat.total,
-        avgWin: (bestStat.profit / bestStat.total).toFixed(2)
-      };
+      setAccountDialog(null)
+    } catch (err: any) {
+      addNotification({ title: "Could not save account", message: err?.message || "Please try again.", type: "error" })
     }
   }
-  const worstTrade = trades.length > 0
-    ? trades.reduce((worst: Trade, t: Trade) => {
-      const wPL = worst.profitLoss || 0;
-      const tPL = t.profitLoss || 0;
-      return tPL < wPL ? t : worst;
-    }, trades[0])
-    : null
 
-  // Get recent trades
-  const recentTrades = trades.slice(0, 5)
-
-  if (isLoading) {
-    return <BounceLoader />
-  }
+  if (isLoading) return <BounceLoader />
 
   return (
-    <div className="p-4 md:p-6 lg:p-8">
-      {/* Header */}
-      <div className="mb-6 md:mb-8">
-        <div className="flex items-center justify-between">
-          <div>
-            <div className="flex items-center gap-3 mb-2">
-              <div className="w-2 h-2 animate-pulse bg-sidebar-primary" />
-              <span className="text-xs font-mono text-muted-foreground uppercase tracking-wider">
-                Performance Overview
-              </span>
-            </div>
-            <h1 className="text-2xl md:text-3xl font-semibold tracking-tight">Trading Dashboard</h1>
-            <p className="text-sm md:text-base text-muted-foreground mt-1">
-              Track your trading performance and discipline
-            </p>
+    <Page>
+      <PageHeader
+        title={name ? `${greeting()}, ${name}` : greeting()}
+        description={new Date().toLocaleDateString(undefined, { weekday: "long", month: "long", day: "numeric", year: "numeric" })}
+        actions={
+          <>
+            <Button variant="outline" size="sm" onClick={updateMetrics}>
+              <RefreshCw /> Refresh
+            </Button>
+            <Button size="sm" asChild>
+              <Link href="/journal">
+                <Plus /> Log trade
+              </Link>
+            </Button>
+          </>
+        }
+      />
+
+      {/* KPIs */}
+      <div className="mb-4 grid grid-cols-2 gap-3 md:mb-6 md:gap-4 xl:grid-cols-4">
+        <StatCard
+          label="Net P&L"
+          value={formatMoney(m.netPnl, { sign: true })}
+          tone={pnlTone(m.netPnl)}
+          icon={m.netPnl >= 0 ? TrendingUp : TrendingDown}
+          sub={`${m.closedTrades} closed trades · ${roi >= 0 ? "+" : ""}${roi.toFixed(1)}% return`}
+        />
+        <StatCard
+          label="Win rate"
+          value={`${winRate.toFixed(1)}%`}
+          icon={Target}
+          sub={`${m.wins} wins · ${m.losses} losses · ${m.breakevens} BE`}
+        >
+          <div className="mt-3 flex h-1.5 overflow-hidden rounded-full bg-secondary">
+            <div className="bg-profit" style={{ width: `${winRate}%` }} />
+            <div className="bg-loss/70" style={{ width: `${decided ? 100 - winRate : 0}%` }} />
           </div>
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={updateMetrics}
-            className="gap-2 bg-transparent"
-          >
-            <RefreshCw className="w-4 h-4" />
-            <span className="hidden sm:inline">Refresh</span>
-          </Button>
-        </div>
+        </StatCard>
+        <StatCard
+          label="Profit factor"
+          value={m.profitFactor ? (Number.isFinite(m.profitFactor) ? m.profitFactor.toFixed(2) : "∞") : "—"}
+          tone={m.profitFactor >= 1 ? "profit" : m.profitFactor > 0 ? "loss" : "default"}
+          icon={Trophy}
+          sub={`Avg win ${formatMoney(m.averageWinner)} · Avg loss ${formatMoney(Math.abs(m.averageLoser))}`}
+        />
+        <StatCard
+          label="Expectancy / trade"
+          value={formatMoney(m.expectancyPerClosed, { sign: true })}
+          tone={pnlTone(m.expectancyPerClosed)}
+          icon={LineChart}
+          sub={`Max drawdown ${formatMoney(Math.abs(m.maxDrawdown))}`}
+        />
       </div>
 
-      {/* Glance Cards */}
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 md:gap-4 mb-6 md:mb-8">
-        {glanceCards.map((card) => (
-          <GlanceCard
-            key={card.title}
-            title={card.title}
-            value={card.value}
-            prefix={card.prefix}
-            suffix={card.suffix}
-            change={card.change ?? 0}
-            sparklineData={card.sparklineData}
+      <div className="grid grid-cols-1 gap-4 md:gap-6 lg:grid-cols-3">
+        {/* Equity */}
+        <Panel className="lg:col-span-2">
+          <PanelHeader
+            title="Equity curve"
+            description="Balance after each trade"
+            actions={
+              <div className="text-right">
+                <div className="font-mono text-lg font-semibold tabular">{formatMoney(balance)}</div>
+                <div className={cn("text-xs tabular", roi >= 0 ? "text-profit" : "text-loss")}>
+                  {roi >= 0 ? "+" : ""}
+                  {roi.toFixed(2)}% all time
+                </div>
+              </div>
+            }
           />
-        ))}
-      </div>
+          <PanelBody className="pt-3">
+            {trades.length ? (
+              <EquityCurveChart height={280} />
+            ) : (
+              <EmptyState
+                icon={LineChart}
+                title="No trades yet"
+                description="Your equity curve appears here once you log or import trades."
+                action={
+                  <Button size="sm" variant="outline" asChild>
+                    <Link href="/import">Import trades</Link>
+                  </Button>
+                }
+                className="h-[280px]"
+              />
+            )}
+          </PanelBody>
+        </Panel>
 
-      {/* Main Content Grid */}
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 md:gap-6">
-        {/* Main Content (Left) */}
-        <div className="lg:col-span-2 space-y-4 md:space-y-6 order-2 lg:order-1">
-          {/* Real-time Equity Curve */}
-          <div className="bg-card border border-border rounded-lg p-6">
-            <div className="flex items-center justify-between mb-4">
-              <h3 className="text-sm font-semibold">Account Growth (Equity Curve)</h3>
-              <span className="text-[10px] text-muted-foreground uppercase font-mono">Performance Visualization</span>
-            </div>
-            <EquityCurveChart />
-          </div>
-
-
-          {/* Exness MT5 Integration */}
-          <TradeDashboard />
-
-          {/* Recent Trades Table */}
-          <div className="bg-card border border-border rounded-lg p-6">
-            <h2 className="text-lg font-semibold mb-4">Recent Trades</h2>
-            <div className="space-y-3">
-              {recentTrades.length > 0 ? (
-                recentTrades.map((trade: Trade) => (
-                  <div key={trade.id} className="flex items-center justify-between p-3 rounded-lg bg-muted/30 border border-border/50 hover:bg-muted/50 transition-colors">
-                    <div className="flex items-center gap-4">
-                      <div className={`w-1 h-8 rounded-full ${trade.result === "win" ? "bg-emerald-500" : "bg-red-500"}`} />
-                      <div>
-                        <p className="text-sm font-semibold">{trade.symbol} <span className="text-[10px] text-muted-foreground ml-1 uppercase">{trade.direction}</span></p>
-                        <p className="text-[10px] text-muted-foreground">{new Date(trade.entryTime).toLocaleDateString()}</p>
-                      </div>
+        {/* Accounts */}
+        <Panel>
+          <PanelHeader
+            title="Accounts"
+            description={`${accounts.length} account${accounts.length === 1 ? "" : "s"}`}
+            icon={Wallet}
+            actions={
+              <Button variant="ghost" size="sm" onClick={openAdd}>
+                <Plus /> Add
+              </Button>
+            }
+          />
+          <PanelBody className="space-y-2">
+            {accounts.length ? (
+              accounts.map((a) => {
+                const pnl = pnlByAccount[a.id] || 0
+                return (
+                  <div key={a.id} className="group flex items-center gap-3 rounded-lg border border-border bg-background/40 p-3">
+                    <div className="min-w-0 flex-1">
+                      <p className="truncate text-sm font-medium">{a.name}</p>
+                      <p className="truncate text-xs text-muted-foreground">
+                        {a.broker || "—"} · deposit {formatMoney(a.balance)}
+                      </p>
                     </div>
                     <div className="text-right">
-                      <p className={`text-sm font-mono font-bold ${trade.result === "win" ? "text-emerald-400" : "text-red-400"}`}>
-                        {trade.result === "win" ? "+" : ""}${trade.profitLoss?.toLocaleString()}
+                      <p className="font-mono text-sm font-semibold tabular">{formatMoney((a.balance || 0) + pnl)}</p>
+                      <p className={cn("font-mono text-xs tabular", pnl > 0 ? "text-profit" : pnl < 0 ? "text-loss" : "text-muted-foreground")}>
+                        {formatMoney(pnl, { sign: true })}
                       </p>
-                      <p className="text-[10px] text-muted-foreground italic">{trade.strategy}</p>
+                    </div>
+                    <div className="flex flex-col opacity-60 transition-opacity group-hover:opacity-100">
+                      <button className="rounded p-1 text-muted-foreground hover:bg-accent hover:text-foreground" title="Edit" onClick={() => openEdit(a)}>
+                        <Edit2 className="size-3.5" />
+                      </button>
+                      <button
+                        className="rounded p-1 text-muted-foreground hover:bg-accent hover:text-loss"
+                        title="Delete"
+                        onClick={() => {
+                          if (window.confirm(`Delete the account "${a.name}"?`)) deleteAccount(a.id)
+                        }}
+                      >
+                        <Trash2 className="size-3.5" />
+                      </button>
                     </div>
                   </div>
-                ))
-              ) : (
-                <p className="text-muted-foreground text-sm text-center py-8">No trades recorded yet</p>
-              )}
-            </div>
-          </div>
-        </div>
+                )
+              })
+            ) : (
+              <EmptyState
+                icon={Wallet}
+                title="No accounts yet"
+                description="Add a trading account to track its balance."
+                action={
+                  <Button size="sm" variant="outline" onClick={openAdd}>
+                    <Plus /> Add account
+                  </Button>
+                }
+              />
+            )}
+          </PanelBody>
+        </Panel>
 
-        {/* Side Panel (Right) */}
-        <div className="flex flex-col gap-4 md:gap-6 order-1 lg:order-2">
-          {/* Active Accounts */}
-          <div className="bg-card border border-border rounded-lg p-6">
-            <div className="flex items-center justify-between mb-4">
-              <div className="flex items-center gap-2">
-                <h3 className="text-sm font-semibold">Active Accounts</h3>
-                <div className="group relative">
-                  <div className="w-4 h-4 rounded-full border border-muted-foreground/50 flex items-center justify-center text-[10px] text-muted-foreground cursor-help">?</div>
-                  <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 w-48 p-2 bg-popover text-popover-foreground text-[10px] rounded shadow-lg border border-border opacity-0 pointer-events-none group-hover:opacity-100 group-hover:pointer-events-auto transition-opacity z-10">
-                    Active Accounts track your total trading capital across different brokers and strategies.
-                  </div>
-                </div>
-              </div>
-              <Button
-                variant="ghost"
-                size="sm"
-                className="h-7 text-[10px] uppercase font-mono tracking-tighter"
-                onClick={() => setShowLinkModal(true)}
-              >
-                + Link Broker
+        {/* Recent trades */}
+        <Panel className="lg:col-span-2">
+          <PanelHeader
+            title="Recent trades"
+            icon={BookOpen}
+            actions={
+              <Button variant="ghost" size="sm" asChild>
+                <Link href="/journal">
+                  View all <ArrowRight />
+                </Link>
               </Button>
-            </div>
-            <div className="space-y-3">
-              {accounts.length > 0 ? (
-                accounts.slice(0, 2).map((account: Account) => (
-                  <div key={account.id} className="flex items-center justify-between">
-                    <div className="flex-1">
-                      {editingAccountId === account.id ? (
-                        <div className="space-y-1">
-                          <input className="w-full px-2 py-1 border rounded" value={editName} onChange={(e: React.ChangeEvent<HTMLInputElement>) => setEditName(e.target.value)} />
-                          <input className="w-full px-2 py-1 border rounded" value={editBroker} onChange={(e: React.ChangeEvent<HTMLInputElement>) => setEditBroker(e.target.value)} />
-                        </div>
-                      ) : (
-                        <>
-                          <p className="text-sm font-medium">{account.name}</p>
-                          <p className="text-xs text-muted-foreground">{account.broker}</p>
-                        </>
-                      )}
-                    </div>
-                    <div className="ml-4 flex items-center gap-2">
-                      {editingAccountId === account.id ? (
-                        <>
-                          <input className="w-24 text-right px-2 py-1 border rounded font-mono" value={editBalance} onChange={(e: React.ChangeEvent<HTMLInputElement>) => setEditBalance(e.target.value)} />
-                          <Button size="sm" onClick={() => saveEdit(account.id)}>Save</Button>
-                          <Button variant="ghost" size="sm" onClick={cancelEdit}>Cancel</Button>
-                        </>
-                      ) : (
-                        <>
-                          <div className="text-right">
-                            <p className="text-sm font-mono font-semibold">${(account.balance + (accounts.length === 1 ? performanceMetrics.totalProfitLoss : 0)).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</p>
-                            <p className="text-[10px] text-muted-foreground italic">
-                              (Deposit: ${account.balance.toLocaleString()})
-                            </p>
-                          </div>
-                          <Button variant="outline" size="sm" onClick={() => startEdit(account)}>Edit</Button>
-                          <Button variant="ghost" size="sm" className="text-red-500 hover:text-red-600 px-2" onClick={() => {
-                            if (window.confirm(`Are you sure you want to delete the account '${account.name}'?`)) {
-                              deleteAccount(account.id);
-                            }
-                          }}>
-                            <Trash2 className="w-4 h-4" />
-                          </Button>
-                        </>
-                      )}
-                    </div>
-                  </div>
-                ))
-              ) : (
-                <div className="text-center py-6 border-2 border-dashed border-border rounded-lg">
-                  <p className="text-xs text-muted-foreground mb-3">No trading accounts linked</p>
-                  <Button variant="outline" size="sm" onClick={() => setShowLinkModal(true)}>
-                    Link Account
+            }
+          />
+          <PanelBody className="px-2 pb-2 pt-3 md:px-3">
+            {recent.length ? (
+              <div className="overflow-x-auto">
+                <table className="w-full text-sm">
+                  <thead>
+                    <tr className="text-left text-xs text-muted-foreground">
+                      <th className="px-3 py-2 font-medium">Symbol</th>
+                      <th className="px-3 py-2 font-medium">Side</th>
+                      <th className="hidden px-3 py-2 font-medium sm:table-cell">Date</th>
+                      <th className="hidden px-3 py-2 font-medium md:table-cell">Strategy</th>
+                      <th className="px-3 py-2 font-medium">Result</th>
+                      <th className="px-3 py-2 text-right font-medium">P&L</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {recent.map((t) => (
+                      <tr key={t.id} className="border-t border-border transition-colors hover:bg-accent/40">
+                        <td className="px-3 py-2.5 font-medium">{t.symbol}</td>
+                        <td className="px-3 py-2.5">
+                          <DirectionBadge direction={t.direction} />
+                        </td>
+                        <td className="hidden px-3 py-2.5 text-muted-foreground sm:table-cell">
+                          {new Date(t.entryTime).toLocaleDateString(undefined, { month: "short", day: "numeric" })}
+                        </td>
+                        <td className="hidden max-w-[160px] truncate px-3 py-2.5 text-muted-foreground md:table-cell">{strategyName(t) || "—"}</td>
+                        <td className="px-3 py-2.5">
+                          <ResultBadge result={t.tradeStatus === "open" ? "" : calcResult(t)} />
+                        </td>
+                        <td className={cn("px-3 py-2.5 text-right font-mono tabular", (t.profitLoss || 0) > 0 ? "text-profit" : (t.profitLoss || 0) < 0 ? "text-loss" : "")}>
+                          {formatMoney(t.profitLoss, { sign: true })}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            ) : (
+              <EmptyState
+                icon={BookOpen}
+                title="No trades recorded"
+                description="Log your first trade or import your history to get started."
+                action={
+                  <Button size="sm" asChild>
+                    <Link href="/journal">
+                      <Plus /> Log trade
+                    </Link>
                   </Button>
-                </div>
-              )}
-            </div>
-          </div>
+                }
+              />
+            )}
+          </PanelBody>
+        </Panel>
 
-          {/* Top Strategy */}
-          {bestStrategy && (
-            <div className="bg-card border border-border rounded-lg p-6">
-              <div className="flex items-center gap-2 mb-3">
-                <Target className="w-4 h-4 text-emerald-500" />
-                <h3 className="text-sm font-semibold">Best Strategy</h3>
-              </div>
-              <p className="text-lg font-semibold mb-2">{bestStrategy.name}</p>
-              <div className="space-y-2">
-                <div className="flex justify-between text-sm">
-                  <span className="text-muted-foreground">Win Rate</span>
-                  <span className="font-mono font-semibold text-emerald-400">{bestStrategy.winRate.toFixed(1)}%</span>
-                </div>
-                <div className="flex justify-between text-sm">
-                  <span className="text-muted-foreground">Trades</span>
-                  <span className="font-mono font-semibold">{bestStrategy.trades}</span>
-                </div>
-                <div className="flex justify-between text-sm">
-                  <span className="text-muted-foreground">Avg Win</span>
-                  <span className="font-mono font-semibold text-emerald-400 font-bold">${bestStrategy.avgWin}</span>
-                </div>
-              </div>
-            </div>
-          )}
-
-          {/* Risk Calculator */}
-          <LotSizeCalculator initialBalance={performanceMetrics.netBalance} />
-
-          {/* Quick Stats Summary */}
-          <div className="bg-card border border-border rounded-lg p-6">
-            <h2 className="text-sm font-semibold mb-4 uppercase tracking-tighter opacity-70">Stats Overview</h2>
-            <div className="space-y-3">
-              <div className="flex items-center justify-between">
-                <span className="text-xs text-muted-foreground">Total Trades</span>
-                <span className="text-xs font-mono font-bold">{performanceMetrics?.totalTrades ?? 0}</span>
-              </div>
-              <div className="flex items-center justify-between">
-                <span className="text-xs text-muted-foreground">Win / Loss</span>
-                <span className="text-xs font-mono font-bold text-emerald-400">
-                  {performanceMetrics?.winningTrades ?? 0} <span className="text-muted-foreground">/</span> <span className="text-red-400">{performanceMetrics?.losingTrades ?? 0}</span>
-                </span>
-              </div>
-              <div className="flex items-center justify-between">
-                <span className="text-xs text-muted-foreground">Account Growth</span>
-                <span className={`text-xs font-mono font-bold ${performanceMetrics.totalProfitLoss >= 0 ? "text-emerald-400" : "text-red-400"}`}>
-                  {performanceMetrics.roi.toFixed(1)}%
-                </span>
-              </div>
-            </div>
-          </div>
-        </div>
-
-        {/* Broker Link Modal */}
-        {showLinkModal && (
-          <div className="fixed inset-0 bg-background/80 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-            <div className="bg-card border border-border rounded-xl shadow-2xl max-w-md w-full p-6 animate-in fade-in zoom-in duration-200">
-              <div className="flex items-center justify-between mb-6">
-                <h2 className="text-xl font-bold">Connect Broker</h2>
-                <Button variant="ghost" size="icon" onClick={() => setShowLinkModal(false)}>✕</Button>
-              </div>
-
-              <div className="space-y-6">
-                <div className="p-4 rounded-lg bg-sidebar-primary/10 border border-sidebar-primary/20">
-                  <h4 className="flex items-center gap-2 text-sm font-semibold mb-2">
-                    <span className="w-2 h-2 bg-sidebar-primary rounded-full animate-pulse" />
-                    Link with Exness
-                  </h4>
-                  <p className="text-xs text-muted-foreground leading-relaxed">
-                    To sync your balance and trades automatically with Exness:
+        {/* Highlights */}
+        <Panel>
+          <PanelHeader title="Highlights" icon={Trophy} />
+          <PanelBody className="space-y-1">
+            {[
+              {
+                label: "Best strategy",
+                value: highlights.best ? highlights.best[0] : "—",
+                sub: highlights.best ? `${formatMoney(highlights.best[1].pnl, { sign: true })} · ${highlights.best[1].n} trades` : "",
+                tone: highlights.best ? pnlTone(highlights.best[1].pnl) : "default",
+              },
+              { label: "Largest win", value: formatMoney(m.largestWinner, { sign: true }), tone: m.largestWinner > 0 ? "profit" : "default" },
+              { label: "Largest loss", value: formatMoney(m.largestLoser, { sign: true }), tone: m.largestLoser < 0 ? "loss" : "default" },
+              {
+                label: "Current streak",
+                value: highlights.streak ? `${highlights.streak} ${highlights.streakKind === "win" ? "win" : "loss"}${highlights.streak > 1 ? (highlights.streakKind === "win" ? "s" : "es") : ""}` : "—",
+                tone: highlights.streakKind === "win" ? "profit" : highlights.streakKind === "loss" ? "loss" : "default",
+                icon: Flame,
+              },
+              { label: "Total trades", value: String(m.totalTrades), tone: "default" },
+            ].map((row) => (
+              <div key={row.label} className="flex items-center justify-between gap-3 rounded-md px-1 py-2">
+                <span className="text-sm text-muted-foreground">{row.label}</span>
+                <div className="min-w-0 text-right">
+                  <p
+                    className={cn(
+                      "truncate text-sm font-medium tabular",
+                      row.tone === "profit" && "text-profit",
+                      row.tone === "loss" && "text-loss"
+                    )}
+                  >
+                    {row.value}
                   </p>
-                  <ol className="text-xs text-muted-foreground list-decimal ml-4 mt-2 space-y-1">
-                    <li>Log in to your <b>Exness Personal Area</b>.</li>
-                    <li>Go to <b>Settings</b> &gt; <b>API</b>.</li>
-                    <li>Generate a <b>Read-Only API Key</b>.</li>
-                    <li>Enter the key details below (Integration coming soon).</li>
-                  </ol>
-                </div>
-
-                <div className="space-y-4 opacity-50 pointer-events-none">
-                  <div className="space-y-2">
-                    <label className="text-[10px] uppercase font-bold tracking-widest text-muted-foreground">API Key</label>
-                    <input type="password" placeholder="ex_..." className="w-full bg-background border border-border rounded px-3 py-2 text-sm font-mono" />
-                  </div>
-                </div>
-
-                <div className="pt-4 flex flex-col gap-3">
-                  <Button className="w-full" onClick={() => setShowManualModal(true)}>
-                    Add Manual Account
-                  </Button>
-                  <Button variant="ghost" className="opacity-50" disabled>
-                    Sync via API (Coming Soon)
-                  </Button>
-                  <Button variant="outline" onClick={() => setShowLinkModal(false)}>Cancel</Button>
+                  {row.sub && <p className="truncate text-xs text-muted-foreground">{row.sub}</p>}
                 </div>
               </div>
-            </div>
-          </div>
-        )}
+            ))}
+          </PanelBody>
+        </Panel>
 
-        {/* Manual Account Modal */}
-        {showManualModal && (
-          <div className="fixed inset-0 bg-background/80 backdrop-blur-sm z-[60] flex items-center justify-center p-4">
-            <div className="bg-card border border-border rounded-xl shadow-2xl max-w-md w-full p-6">
-              <h2 className="text-xl font-bold mb-4">Add Manual Account</h2>
-              <div className="space-y-4">
-                <div className="space-y-1">
-                  <label className="text-xs font-semibold">Account Name</label>
-                  <input
-                    className="w-full bg-background border border-border rounded px-3 py-2 text-sm"
-                    placeholder="e.g. My Exness Live"
-                    value={manualAccount.name}
-                    onChange={e => setManualAccount({ ...manualAccount, name: e.target.value })}
-                  />
-                </div>
-                <div className="space-y-1">
-                  <label className="text-xs font-semibold">Broker</label>
-                  <input
-                    className="w-full bg-background border border-border rounded px-3 py-2 text-sm"
-                    placeholder="e.g. Exness"
-                    value={manualAccount.broker}
-                    onChange={e => setManualAccount({ ...manualAccount, broker: e.target.value })}
-                  />
-                </div>
-                <div className="space-y-1">
-                  <label className="text-xs font-semibold">Initial Deposit (Balance)</label>
-                  <input
-                    type="number"
-                    className="w-full bg-background border border-border rounded px-3 py-2 text-sm font-mono"
-                    placeholder="0.00"
-                    value={manualAccount.balance || ""}
-                    onChange={e => setManualAccount({ ...manualAccount, balance: Number(e.target.value) })}
-                  />
-                </div>
-                <div className="pt-4 flex gap-3">
-                  <Button className="flex-1" onClick={async () => {
-                    if (addAccount && manualAccount.name) {
-                      await addAccount(manualAccount);
-                      setShowManualModal(false);
-                      setShowLinkModal(false);
-                      addNotification({ title: "Account Added", message: "Your manual account has been saved.", type: "success" });
-                    }
-                  }}>Save Account</Button>
-                  <Button variant="outline" onClick={() => setShowManualModal(false)}>Cancel</Button>
-                </div>
-              </div>
-            </div>
-          </div>
-        )}
+        {/* Calculator */}
+        <div className="lg:col-span-3">
+          <PositionSizeCalculator initialBalance={balance} />
+        </div>
       </div>
-    </div>
+
+      {/* Account dialog */}
+      <Dialog open={!!accountDialog} onOpenChange={(o) => !o && setAccountDialog(null)}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>{accountDialog?.mode === "edit" ? "Edit account" : "Add account"}</DialogTitle>
+            <DialogDescription>The deposit is your starting balance; P&L from trades is added on top.</DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4">
+            <div className="space-y-1.5">
+              <Label htmlFor="acc-name">Account name</Label>
+              <Input id="acc-name" placeholder="e.g. Exness Live" value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} />
+            </div>
+            <div className="space-y-1.5">
+              <Label htmlFor="acc-broker">Broker</Label>
+              <Input id="acc-broker" placeholder="e.g. Exness" value={form.broker} onChange={(e) => setForm({ ...form, broker: e.target.value })} />
+            </div>
+            <div className="space-y-1.5">
+              <Label htmlFor="acc-balance">Deposit</Label>
+              <Input
+                id="acc-balance"
+                inputMode="decimal"
+                placeholder="0.00"
+                className="font-mono"
+                value={form.balance}
+                onChange={(e) => setForm({ ...form, balance: e.target.value })}
+              />
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setAccountDialog(null)}>
+              Cancel
+            </Button>
+            <Button onClick={saveAccount} disabled={!form.name.trim()}>
+              {accountDialog?.mode === "edit" ? "Save changes" : "Add account"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+    </Page>
   )
 }
 
-export default function TradingDashboard() {
+export default function DashboardPage() {
   return (
     <DashboardLayout>
-      <TradingDashboardInner />
+      <DashboardInner />
     </DashboardLayout>
   )
 }

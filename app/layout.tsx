@@ -1,16 +1,16 @@
 import React from "react"
 import type { Metadata, Viewport } from 'next'
-import { Outfit, JetBrains_Mono } from 'next/font/google'
+import { Geist, Geist_Mono } from 'next/font/google'
 import { Analytics } from '@vercel/analytics/next'
 import { ThemeProvider } from 'next-themes'
 import './globals.css'
 import { DashboardProvider } from '@/context/dashboard-context'
 
-const outfit = Outfit({
+const geist = Geist({
   subsets: ["latin"],
   variable: "--font-sans",
 });
-const jetbrainsMono = JetBrains_Mono({
+const geistMono = Geist_Mono({
   subsets: ["latin"],
   variable: "--font-mono",
 });
@@ -29,7 +29,7 @@ export const metadata: Metadata = {
 }
 
 export const viewport: Viewport = {
-  themeColor: '#050505',
+  themeColor: '#09090a',
 }
 
 export default function RootLayout({
@@ -39,7 +39,7 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="en" className="dark" suppressHydrationWarning>
-      <body className={`${outfit.variable} ${jetbrainsMono.variable} font-sans antialiased bg-background text-foreground min-h-screen`}>
+      <body className={`${geist.variable} ${geistMono.variable} font-sans antialiased bg-background text-foreground min-h-screen`}>
         <script dangerouslySetInnerHTML={{
           __html: '(function(){function c(e){var n=e.filename||"";if(n.indexOf("chrome-extension://")===0||n.indexOf("moz-extension://")===0||n.indexOf("safari-extension://")===0){e.preventDefault();e.stopImmediatePropagation();return false}}function d(e){var r=e.reason||{},s=r.stack||"",m=r.message||"";if(s.indexOf("chrome-extension://")!==-1||s.indexOf("moz-extension://")!==-1||s.indexOf("safari-extension://")!==-1||m.indexOf("MetaMask")!==-1||m.indexOf("ethereum")!==-1){e.preventDefault();e.stopImmediatePropagation()}}window.addEventListener("error",c,true);window.addEventListener("unhandledrejection",d,true)})();'
         }} />

@@ -3,15 +3,18 @@
 import { useEffect, useState, useCallback } from "react"
 import { useRouter } from "next/navigation"
 import {
-  Activity,
-  BarChart3,
+  DashboardIcon,
+  AnalyticsIcon,
   Calendar,
-  ImageIcon,
-  Users,
+  BookOpen,
+  Target,
+  Brain,
+  StickyNote,
   Wallet,
-  FileText,
-  TrendingUp,
-  Search,
+  Upload,
+  Settings,
+  Plus,
+  Download,
 } from "@/components/icons"
 import {
   CommandDialog,
@@ -22,20 +25,26 @@ import {
   CommandList,
   CommandSeparator,
 } from "@/components/ui/command"
+import { useDashboard } from "@/context/dashboard-context"
+import { cn } from "@/lib/utils"
 
 const pages = [
-  { name: "Pulse Dashboard", href: "/", icon: Activity },
-  { name: "Campaign Architect", href: "/architect", icon: Calendar },
-  { name: "Performance Engine", href: "/analytics", icon: BarChart3 },
-  { name: "Asset Vault", href: "/assets", icon: ImageIcon },
-  { name: "Audience Intel", href: "/audience", icon: Users },
-  { name: "Budget Manager", href: "/budget", icon: Wallet },
+  { name: "Dashboard", href: "/", icon: DashboardIcon },
+  { name: "Analytics", href: "/analytics", icon: AnalyticsIcon },
+  { name: "Calendar", href: "/calendar", icon: Calendar },
+  { name: "Trades", href: "/journal", icon: BookOpen },
+  { name: "Strategies", href: "/strategies", icon: Target },
+  { name: "Discipline", href: "/discipline", icon: Brain },
+  { name: "Notes", href: "/notes", icon: StickyNote },
+  { name: "Accounts", href: "/accounts", icon: Wallet },
+  { name: "Import", href: "/import", icon: Upload },
+  { name: "Settings", href: "/settings", icon: Settings },
 ]
 
 const quickActions = [
-  { name: "Create New Campaign", action: "new-campaign", icon: FileText },
-  { name: "View Top Performers", action: "top-performers", icon: TrendingUp },
-  { name: "Export Report", action: "export", icon: FileText },
+  { name: "Log a new trade", href: "/journal", icon: Plus },
+  { name: "Import trades from MT5", href: "/import", icon: Upload },
+  { name: "Export / back up data", href: "/settings", icon: Download },
 ]
 
 interface CommandSearchProps {
@@ -45,48 +54,64 @@ interface CommandSearchProps {
 
 export function CommandSearch({ open, onOpenChange }: CommandSearchProps) {
   const router = useRouter()
+  const { trades } = useDashboard()
 
-  const handleSelect = useCallback(
-    (value: string) => {
+  const go = useCallback(
+    (href: string) => {
       onOpenChange(false)
-      if (value.startsWith("/")) {
-        router.push(value)
-      }
+      router.push(href)
     },
     [router, onOpenChange]
   )
 
   return (
     <CommandDialog open={open} onOpenChange={onOpenChange}>
-      <CommandInput placeholder="Search commands, pages, campaigns..." />
+      <CommandInput placeholder="Search pages, actions or trades by symbol..." />
       <CommandList>
         <CommandEmpty>No results found.</CommandEmpty>
         <CommandGroup heading="Pages">
           {pages.map((page) => (
-            <CommandItem
-              key={page.href}
-              value={page.name}
-              onSelect={() => handleSelect(page.href)}
-              className="flex items-center gap-3 cursor-pointer"
-            >
-              <page.icon className="w-4 h-4 text-muted-foreground" />
+            <CommandItem key={page.href} value={`page ${page.name}`} onSelect={() => go(page.href)} className="flex cursor-pointer items-center gap-3">
+              <page.icon className="size-4 text-muted-foreground" />
               <span>{page.name}</span>
             </CommandItem>
           ))}
         </CommandGroup>
         <CommandSeparator />
-        <CommandGroup heading="Quick Actions">
+        <CommandGroup heading="Actions">
           {quickActions.map((action) => (
-            <CommandItem
-              key={action.action}
-              value={action.name}
-              className="flex items-center gap-3 cursor-pointer"
-            >
-              <action.icon className="w-4 h-4 text-muted-foreground" />
+            <CommandItem key={action.name} value={`action ${action.name}`} onSelect={() => go(action.href)} className="flex cursor-pointer items-center gap-3">
+              <action.icon className="size-4 text-muted-foreground" />
               <span>{action.name}</span>
             </CommandItem>
           ))}
         </CommandGroup>
+        {trades.length > 0 && (
+          <>
+            <CommandSeparator />
+            <CommandGroup heading="Recent trades">
+              {trades.slice(0, 50).map((t) => {
+                const pnl = t.profitLoss || 0
+                return (
+                  <CommandItem
+                    key={t.id}
+                    value={`trade ${t.symbol} ${t.direction} ${new Date(t.entryTime).toLocaleDateString()} ${t.id}`}
+                    onSelect={() => go("/journal")}
+                    className="flex cursor-pointer items-center gap-3"
+                  >
+                    <BookOpen className="size-4 text-muted-foreground" />
+                    <span className="font-medium">{t.symbol}</span>
+                    <span className="text-xs uppercase text-muted-foreground">{t.direction}</span>
+                    <span className="text-xs text-muted-foreground">{new Date(t.entryTime).toLocaleDateString()}</span>
+                    <span className={cn("ml-auto font-mono text-xs tabular", pnl > 0 ? "text-profit" : pnl < 0 ? "text-loss" : "text-muted-foreground")}>
+                      {pnl > 0 ? "+" : pnl < 0 ? "-" : ""}${Math.abs(pnl).toFixed(2)}
+                    </span>
+                  </CommandItem>
+                )
+              })}
+            </CommandGroup>
+          </>
+        )}
       </CommandList>
     </CommandDialog>
   )

@@ -6,7 +6,6 @@ import { Sidebar } from "./sidebar"
 import { cn } from "@/lib/utils"
 import { CommandSearch, useCommandSearch } from "./command-search"
 import { NotificationToast } from "./notification-toast"
-import { DashboardProvider } from "@/context/dashboard-context"
 import { motion, AnimatePresence } from "framer-motion"
 import { Menu, Search } from "@/components/icons"
 import Link from "next/link"
@@ -21,26 +20,28 @@ export function DashboardLayout({ children }: DashboardLayoutProps) {
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false)
 
   return (
-    <DashboardProvider>
-      <div className="min-h-screen bg-background noise-overlay">
+    <>
+      <div className="min-h-screen bg-background">
         {/* Mobile Header */}
-        <header className="fixed top-0 left-0 right-0 h-14 bg-background/80 backdrop-blur-xl border-b border-border z-30 lg:hidden">
+        <header className="fixed left-0 right-0 top-0 z-30 h-14 border-b border-border bg-background/80 backdrop-blur-xl lg:hidden">
           <div className="flex items-center justify-between h-full px-4">
             <div className="flex items-center gap-3">
               <button
                 onClick={() => setSidebarOpen(true)}
-                className="p-2 hover:bg-surface-hover transition-colors"
+                className="rounded-md p-2 text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
+                aria-label="Open menu"
               >
                 <Menu className="w-5 h-5" />
               </button>
               <Link href="/" className="flex items-center gap-2">
                 <img src="/logo-mark.png" alt="YAFI logo" width={24} height={24} className="w-6 h-6" />
-                <span className="font-semibold">YAFI</span>
+                <span className="font-semibold tracking-tight">YAFI</span>
               </Link>
             </div>
             <button
               onClick={() => setOpen(true)}
-              className="p-2 hover:bg-surface-hover transition-colors"
+              className="rounded-md p-2 text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
+              aria-label="Search"
             >
               <Search className="w-5 h-5" />
             </button>
@@ -58,14 +59,14 @@ export function DashboardLayout({ children }: DashboardLayoutProps) {
 
         <main className={cn(
           "pt-14 lg:pt-0 transition-all duration-300",
-          sidebarCollapsed ? "lg:pl-20" : "lg:pl-64"
+          sidebarCollapsed ? "lg:pl-[72px]" : "lg:pl-64"
         )}>
           <AnimatePresence mode="wait">
             <motion.div
-              initial={{ opacity: 0, y: 8 }}
+              initial={{ opacity: 0, y: 4 }}
               animate={{ opacity: 1, y: 0 }}
-              exit={{ opacity: 0, y: -8 }}
-              transition={{ duration: 0.2, ease: "easeOut" }}
+              exit={{ opacity: 0 }}
+              transition={{ duration: 0.18, ease: "easeOut" }}
             >
               {children}
             </motion.div>
@@ -74,6 +75,6 @@ export function DashboardLayout({ children }: DashboardLayoutProps) {
 
         <NotificationToast />
       </div>
-    </DashboardProvider>
+    </>
   )
 }

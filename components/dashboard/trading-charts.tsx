@@ -23,50 +23,64 @@ import {
 
 const axisProps = { stroke: "var(--muted-foreground)", fontSize: 10, tickLine: false, axisLine: false }
 
-export function EquityCurveChart() {
+export function EquityCurveChart({ height = 288 }: { height?: number }) {
   const { trades, performanceMetrics } = useDashboard()
   const startingBalance = performanceMetrics.totalDeposit || 0
 
+  // Copy before sorting: `trades` is shared context state and must not be mutated.
+  const sorted = [...trades].sort((a, b) => new Date(a.entryTime).getTime() - new Date(b.entryTime).getTime())
+  let running = startingBalance
   const equityData = [
-    { trade: 0, balance: startingBalance, symbol: "Deposit", pnl: 0 },
-    ...trades
-      .sort((a, b) => new Date(a.entryTime).getTime() - new Date(b.entryTime).getTime())
-      .reduce((acc: any[], trade, index) => {
-        const prevBalance = index === 0 ? startingBalance : acc[index - 1].balance
-        return [...acc, { trade: index + 1, balance: prevBalance + (trade.profitLoss || 0), symbol: trade.symbol, pnl: trade.profitLoss || 0 }]
-      }, [])
+    { trade: 0, balance: startingBalance, symbol: "Starting balance", pnl: 0, date: "" },
+    ...sorted.map((t, i) => {
+      running += t.profitLoss || 0
+      return { trade: i + 1, balance: running, symbol: t.symbol, pnl: t.profitLoss || 0, date: new Date(t.entryTime).toLocaleDateString() }
+    }),
   ]
+  const color = running >= startingBalance ? "var(--brand)" : "var(--loss)"
+  const fmt = (n: number) => Math.abs(n).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })
 
   return (
-    <div className="w-full h-72">
+    <div className="w-full" style={{ height }}>
       <ResponsiveContainer width="100%" height="100%">
-        <AreaChart data={equityData} margin={{ top: 10, right: 10, left: 0, bottom: 0 }}>
+        <AreaChart data={equityData} margin={{ top: 8, right: 8, left: 0, bottom: 0 }}>
           <defs>
             <linearGradient id="eqGrad" x1="0" y1="0" x2="0" y2="1">
-              <stop offset="5%" stopColor="#10b981" stopOpacity={0.25} />
-              <stop offset="95%" stopColor="#10b981" stopOpacity={0} />
+              <stop offset="0%" stopColor={color} stopOpacity={0.22} />
+              <stop offset="100%" stopColor={color} stopOpacity={0} />
             </linearGradient>
           </defs>
-          <CartesianGrid strokeDasharray="" stroke="transparent" />
-          <XAxis dataKey="trade" {...axisProps} tickFormatter={(v: number) => v === 0 ? "Start" : `#${v}`} />
-          <YAxis {...axisProps} domain={["auto", "auto"]} tickFormatter={(v: number) => `$${v.toLocaleString()}`} />
+          <CartesianGrid vertical={false} stroke="var(--border)" />
+          <XAxis dataKey="trade" {...axisProps} minTickGap={24} tickFormatter={(v: number) => (v === 0 ? "Start" : `#${v}`)} />
+          <YAxis {...axisProps} width={64} domain={["auto", "auto"]} tickFormatter={(v: number) => `$${Math.round(v).toLocaleString()}`} />
           <Tooltip
-            content={({ active, payload, label }: any) => {
+            cursor={{ stroke: "var(--muted-foreground)", strokeDasharray: "3 3", strokeOpacity: 0.5 }}
+            content={({ active, payload }: any) => {
               if (!active || !payload?.length) return null
               const d = payload[0].payload
               return (
-                <div className="bg-zinc-900 border border-zinc-700 rounded-xl px-4 py-3 shadow-xl backdrop-blur-sm text-xs">
-                  <p className="text-zinc-400 font-medium mb-1">{label === 0 ? "Initial Deposit" : `Trade #${label}`}</p>
-                  <p className="text-zinc-500 mb-1.5">{d.symbol}</p>
-                  <p className={`font-mono font-semibold ${d.pnl >= 0 ? "text-emerald-400" : "text-rose-400"}`}>
-                    {d.pnl >= 0 ? "+" : ""}${Number(d.pnl).toLocaleString()}
-                  </p>
-                  <p className="font-mono text-zinc-100 mt-0.5">Balance: ${Number(d.balance).toLocaleString()}</p>
+                <div className="rounded-lg border border-border bg-popover px-3 py-2 text-xs shadow-xl">
+                  <p className="font-medium">{d.trade === 0 ? "Starting balance" : `Trade #${d.trade} · ${d.symbol}`}</p>
+                  {d.date && <p className="text-muted-foreground">{d.date}</p>}
+                  {d.trade !== 0 && (
+                    <p className={`mt-1 font-mono tabular ${d.pnl >= 0 ? "text-profit" : "text-loss"}`}>
+                      {d.pnl >= 0 ? "+" : "-"}${fmt(Number(d.pnl))}
+                    </p>
+                  )}
+                  <p className="font-mono tabular">Balance ${fmt(Number(d.balance))}</p>
                 </div>
               )
             }}
           />
-          <Area type="monotone" dataKey="balance" stroke="#10b981" strokeWidth={2} fill="url(#eqGrad)" dot={false} activeDot={{ r: 4, stroke: "#10b981", strokeWidth: 2, fill: "var(--background)" }} />
+          <Area
+            type="monotone"
+            dataKey="balance"
+            stroke={color}
+            strokeWidth={2}
+            fill="url(#eqGrad)"
+            dot={false}
+            activeDot={{ r: 4, stroke: color, strokeWidth: 2, fill: "var(--card)" }}
+          />
         </AreaChart>
       </ResponsiveContainer>
     </div>

@@ -4,36 +4,49 @@ import Link from "next/link"
 import { usePathname } from "next/navigation"
 import { cn } from "@/lib/utils"
 import {
-  Activity,
-  BarChart3,
+  DashboardIcon,
+  AnalyticsIcon,
   BookOpen,
   Target,
   Brain,
   Upload,
   Settings,
   Search,
-  Command,
   X,
-  Zap,
-  ChevronLeft,
-  ChevronRight,
   Calendar as CalendarIcon,
   StickyNote,
+  Wallet,
   LogOut,
+  PanelLeftIcon,
 } from "@/components/icons"
 import { ThemeToggle } from "./theme-toggle"
 import { useCurrentUser, signOut } from "@/hooks/use-current-user"
-import { Button } from "@/components/ui/button"
 
-const navItems = [
-  { href: "/", label: "Dashboard", icon: Activity, description: "Overview" },
-  { href: "/calendar", label: "Calendar", icon: CalendarIcon, description: "Trade Schedule" },
-  { href: "/journal", label: "Journal", icon: BookOpen, description: "Trade Log" },
-  { href: "/notes", label: "Notes", icon: StickyNote, description: "Sticky Notes" },
-  { href: "/import", label: "Import", icon: Upload, description: "Bulk Import" },
-  { href: "/analytics", label: "Analytics", icon: BarChart3, description: "Performance" },
-  { href: "/strategies", label: "Strategies", icon: Target, description: "Management" },
-  { href: "/discipline", label: "Discipline", icon: Brain, description: "Psychology" },
+const navGroups = [
+  {
+    label: "Overview",
+    items: [
+      { href: "/", label: "Dashboard", icon: DashboardIcon },
+      { href: "/analytics", label: "Analytics", icon: AnalyticsIcon },
+      { href: "/calendar", label: "Calendar", icon: CalendarIcon },
+    ],
+  },
+  {
+    label: "Journal",
+    items: [
+      { href: "/journal", label: "Trades", icon: BookOpen },
+      { href: "/strategies", label: "Strategies", icon: Target },
+      { href: "/discipline", label: "Discipline", icon: Brain },
+      { href: "/notes", label: "Notes", icon: StickyNote },
+    ],
+  },
+  {
+    label: "Data",
+    items: [
+      { href: "/accounts", label: "Accounts", icon: Wallet },
+      { href: "/import", label: "Import", icon: Upload },
+    ],
+  },
 ]
 
 interface SidebarProps {
@@ -49,63 +62,91 @@ export function Sidebar({ onOpenCommand, isOpen, onClose, isCollapsed, onToggleC
   const user = useCurrentUser()
   const displayName = (user?.user_metadata?.full_name as string | undefined) || user?.email?.split("@")[0] || ""
   const initials = (displayName || "?").slice(0, 2).toUpperCase()
+  const collapsed = !!isCollapsed && !isOpen
+
+  const isActive = (href: string) => (href === "/" ? pathname === "/" : pathname?.startsWith(href))
+
+  const NavLink = ({ href, label, icon: Icon }: { href: string; label: string; icon: typeof DashboardIcon }) => {
+    const active = isActive(href)
+    return (
+      <Link
+        href={href}
+        onClick={onClose}
+        title={collapsed ? label : undefined}
+        className={cn(
+          "group relative flex h-9 items-center gap-3 rounded-md px-2.5 text-sm transition-colors",
+          active
+            ? "bg-accent text-foreground"
+            : "text-muted-foreground hover:bg-accent/60 hover:text-foreground",
+          collapsed && "justify-center px-0"
+        )}
+      >
+        {active && <span className="absolute -left-3 top-1/2 h-5 w-[3px] -translate-y-1/2 rounded-r-full bg-brand" />}
+        <Icon className={cn("size-[18px] shrink-0", active && "text-brand")} />
+        {!collapsed && <span className="truncate font-medium">{label}</span>}
+      </Link>
+    )
+  }
 
   return (
     <>
-      {/* Mobile Overlay */}
       {isOpen && (
-        <div
-          className="fixed inset-0 bg-black/60 backdrop-blur-sm z-40 lg:hidden"
-          onClick={onClose}
-        />
+        <div className="fixed inset-0 z-40 bg-black/60 backdrop-blur-sm lg:hidden" onClick={onClose} />
       )}
 
-      <aside className={cn(
-        "fixed left-0 top-0 h-screen flex flex-col border-r border-border bg-background z-50 transition-all duration-300",
-        "lg:translate-x-0",
-        isOpen ? "translate-x-0" : "-translate-x-full",
-        isCollapsed ? "w-20" : "w-64"
-      )}>
-        {/* Logo & Theme Toggle */}
-        <div className={cn("p-6 border-b border-border transition-all", isCollapsed && "p-4")}>
-          <div className="flex items-center justify-between mb-4">
-            <Link href="/" className="flex items-center gap-3 group" onClick={onClose}>
-              <img src="/logo-mark.png" alt="YAFI logo" width={32} height={32} className="w-8 h-8 shrink-0" />
-              {!isCollapsed && <span className="text-lg font-semibold tracking-tight">YAFI</span>}
-            </Link>
-            <button
-              onClick={onClose}
-              className="lg:hidden p-1 hover:bg-surface-hover transition-colors"
-            >
-              <X className="w-5 h-5" />
-            </button>
-            {!isOpen && (
-              <button
-                onClick={onToggleCollapse}
-                className="hidden lg:flex p-1.5 hover:bg-surface-hover rounded transition-colors text-muted-foreground"
-              >
-                {isCollapsed ? <ChevronRight className="w-4 h-4" /> : <ChevronLeft className="w-4 h-4" />}
-              </button>
+      <aside
+        className={cn(
+          "fixed left-0 top-0 z-50 flex h-screen flex-col border-r border-sidebar-border bg-sidebar transition-[width,transform] duration-300",
+          "lg:translate-x-0",
+          isOpen ? "translate-x-0" : "-translate-x-full",
+          collapsed ? "w-[72px]" : "w-64"
+        )}
+      >
+        {/* Brand */}
+        <div className={cn("flex h-16 items-center justify-between px-5", collapsed && "justify-center px-0")}>
+          <Link href="/" onClick={onClose} className="flex items-center gap-2.5">
+            <img src="/logo-mark.png" alt="YAFI logo" width={28} height={28} className="size-7 shrink-0" />
+            {!collapsed && (
+              <span className="text-[15px] font-semibold tracking-tight">
+                YAFI <span className="font-normal text-muted-foreground">Journal</span>
+              </span>
             )}
-          </div>
-          {!isCollapsed && <ThemeToggle />}
+          </Link>
+          <button
+            onClick={onClose}
+            className="rounded-md p-1.5 text-muted-foreground hover:bg-accent lg:hidden"
+            aria-label="Close menu"
+          >
+            <X className="size-4" />
+          </button>
+          {!collapsed && (
+            <button
+              onClick={onToggleCollapse}
+              className="hidden rounded-md p-1.5 text-muted-foreground hover:bg-accent hover:text-foreground lg:flex"
+              aria-label="Collapse sidebar"
+              title="Collapse sidebar"
+            >
+              <PanelLeftIcon className="size-4" />
+            </button>
+          )}
         </div>
 
-        {/* Search Trigger */}
-        <div className={cn("p-4", isCollapsed && "p-2")}>
+        {/* Search */}
+        <div className="px-3 pb-2">
           <button
             onClick={onOpenCommand}
+            title={collapsed ? "Search (Ctrl K)" : undefined}
             className={cn(
-              "w-full flex items-center gap-3 px-3 py-2 text-sm text-muted-foreground bg-surface border border-border hover:bg-surface-hover transition-colors",
-              isCollapsed && "px-0 justify-center"
+              "flex h-9 w-full items-center gap-2.5 rounded-md border border-border bg-background/50 px-2.5 text-sm text-muted-foreground transition-colors hover:bg-accent/60 hover:text-foreground",
+              collapsed && "justify-center px-0"
             )}
           >
-            <Search className="w-4 h-4 shrink-0" />
-            {!isCollapsed && (
+            <Search className="size-4 shrink-0" />
+            {!collapsed && (
               <>
-                <span className="flex-1 text-left">Search...</span>
-                <kbd className="flex items-center gap-1 text-xs font-mono bg-background px-1.5 py-0.5 border border-border">
-                  <Command className="w-3 h-3" />K
+                <span className="flex-1 text-left">Search</span>
+                <kbd className="rounded border border-border bg-secondary px-1.5 py-0.5 font-mono text-[10px] text-muted-foreground">
+                  Ctrl K
                 </kbd>
               </>
             )}
@@ -113,81 +154,60 @@ export function Sidebar({ onOpenCommand, isOpen, onClose, isCollapsed, onToggleC
         </div>
 
         {/* Navigation */}
-        <nav className="flex-1 p-4 space-y-1 overflow-y-auto scrollbar-hide">
-          {navItems.map((item) => {
-            const isActive = pathname === item.href
-            return (
-              <Link
-                key={item.href}
-                href={item.href}
-                onClick={onClose}
-                className={cn(
-                  "flex items-center gap-3 px-3 py-2.5 text-sm transition-all group relative",
-                  isActive
-                    ? "text-accent-foreground bg-accent"
-                    : "text-muted-foreground hover:text-foreground hover:bg-surface-hover",
-                  isCollapsed && "justify-center px-0"
-                )}
-              >
-                {isActive && !isCollapsed && (
-                  <div className="absolute left-0 top-1/2 -translate-y-1/2 w-0.5 h-4 bg-lime lime-glow-sm" />
-                )}
-                {isActive && isCollapsed && (
-                  <div className="absolute left-0 top-0 bottom-0 w-1 bg-lime lime-glow-sm" />
-                )}
-                <item.icon
-                  className={cn(
-                    "w-4 h-4 transition-all shrink-0",
-                    isActive ? "text-accent-foreground" : ""
-                  )}
-                />
-                {!isCollapsed && <span className="font-medium">{item.label}</span>}
-                {!isCollapsed && (
-                  <span className="ml-auto text-xs text-muted-foreground opacity-0 group-hover:opacity-100 transition-opacity">
-                    {item.description}
-                  </span>
-                )}
-              </Link>
-            )
-          })}
+        <nav className="flex-1 overflow-y-auto px-3 py-2 scrollbar-hide">
+          {navGroups.map((group) => (
+            <div key={group.label} className="mb-5">
+              {!collapsed ? (
+                <p className="mb-1.5 px-2.5 text-[11px] font-medium uppercase tracking-wider text-muted-foreground/70">
+                  {group.label}
+                </p>
+              ) : (
+                <div className="mx-auto mb-2 h-px w-6 bg-border" />
+              )}
+              <div className="space-y-0.5">
+                {group.items.map((item) => (
+                  <NavLink key={item.href} {...item} />
+                ))}
+              </div>
+            </div>
+          ))}
         </nav>
 
-        {/* Bottom Section */}
-        <div className="p-4 border-t border-border">
-          <Link
-            href="/settings"
-            onClick={onClose}
-            className={cn(
-              "flex items-center gap-3 px-3 py-2.5 text-sm text-muted-foreground hover:text-foreground hover:bg-surface-hover transition-colors",
-              isCollapsed && "justify-center px-0"
-            )}
-          >
-            <Settings className="w-4 h-4 shrink-0" />
-            {!isCollapsed && <span>Settings</span>}
-          </Link>
-
-          {/* User */}
-          <div className={cn("mt-4 flex items-center gap-3 px-3", isCollapsed && "px-0 justify-center")}>
-            <div className="w-8 h-8 bg-surface border border-border flex items-center justify-center shrink-0">
-              <span className="text-xs font-mono text-muted-foreground">{initials}</span>
+        {/* Footer */}
+        <div className="border-t border-sidebar-border p-3">
+          <NavLink href="/settings" label="Settings" icon={Settings} />
+          {collapsed ? (
+            <div className="mt-2 flex flex-col items-center gap-1">
+              <button
+                onClick={onToggleCollapse}
+                className="hidden rounded-md p-2 text-muted-foreground hover:bg-accent hover:text-foreground lg:flex"
+                aria-label="Expand sidebar"
+                title="Expand sidebar"
+              >
+                <PanelLeftIcon className="size-4 rotate-180" />
+              </button>
+              <ThemeToggle />
             </div>
-            {!isCollapsed && (
-              <div className="flex-1 min-w-0">
-                <p className="text-sm font-medium truncate">{displayName}</p>
-                <p className="text-xs text-muted-foreground truncate">{user?.email ?? ""}</p>
+          ) : (
+            <div className="mt-2 flex items-center gap-2.5 rounded-md px-2 py-2">
+              <div className="flex size-8 shrink-0 items-center justify-center rounded-full bg-brand-soft text-xs font-semibold text-brand">
+                {initials}
               </div>
-            )}
-            {!isCollapsed && (
+              <div className="min-w-0 flex-1">
+                <p className="truncate text-sm font-medium">{displayName || "…"}</p>
+                <p className="truncate text-xs text-muted-foreground">{user?.email ?? ""}</p>
+              </div>
+              <ThemeToggle />
               <button
                 onClick={signOut}
                 title="Sign out"
                 aria-label="Sign out"
-                className="p-1.5 text-muted-foreground hover:text-foreground hover:bg-surface-hover transition-colors"
+                className="flex size-8 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
               >
-                <LogOut className="w-4 h-4" />
+                <LogOut className="size-4" />
               </button>
-            )}
-          </div>
+            </div>
+          )}
         </div>
       </aside>
     </>

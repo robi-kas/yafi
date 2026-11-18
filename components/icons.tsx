@@ -97,6 +97,8 @@ import {
   ZoomInAreaIcon as HiZoomInAreaIcon,
   ZoomOutAreaIcon as HiZoomOutAreaIcon,
   Logout03Icon as HiLogout03Icon,
+  Analytics01Icon as HiAnalytics01Icon,
+  DashboardSquare02Icon as HiDashboardSquare02Icon,
 } from "@hugeicons/core-free-icons"
 
 type HugeiconData = ComponentProps<typeof HugeiconsIcon>["icon"]
@@ -217,3 +219,5 @@ export const Zap = createIcon(HiZapIcon, "Zap")
 export const ZoomIn = createIcon(HiZoomInAreaIcon, "ZoomIn")
 export const ZoomOut = createIcon(HiZoomOutAreaIcon, "ZoomOut")
 export const LogOut = createIcon(HiLogout03Icon, "LogOut")
+export const AnalyticsIcon = createIcon(HiAnalytics01Icon, "AnalyticsIcon")
+export const DashboardIcon = createIcon(HiDashboardSquare02Icon, "DashboardIcon")

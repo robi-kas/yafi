@@ -118,12 +118,26 @@ export async function POST(request: Request) {
                         delete dataToSave[k];
                     }
 
+                    // Exports record the strategy by name; link it (creating it if needed).
+                    let strategyId: string | null = ownedStrategies.has(trade.strategyId) ? trade.strategyId : null;
+                    const strategyName = typeof trade.strategy === 'string' ? trade.strategy.trim() : '';
+                    if (!strategyId && strategyName) {
+                        const strat = await prisma.strategy.upsert({
+                            where: { userId_name: { userId, name: strategyName } },
+                            update: {},
+                            create: { userId, name: strategyName, description: '' },
+                            select: { id: true },
+                        });
+                        strategyId = strat.id;
+                        ownedStrategies.add(strat.id);
+                    }
+
                     const fields = {
                         ...dataToSave,
                         rrPlanned: dataToSave.rrPlanned ? parseFloat(dataToSave.rrPlanned) : null,
                         rrAchieved: dataToSave.rrAchieved ? parseFloat(dataToSave.rrAchieved) : null,
                         accountId: ownedAccounts.has(trade.accountId) ? trade.accountId : defaultAccountId,
-                        strategyId: ownedStrategies.has(trade.strategyId) ? trade.strategyId : null,
+                        strategyId,
                         entryTime: trade.entryTime ? new Date(trade.entryTime) : new Date(),
                         exitTime: trade.exitTime ? new Date(trade.exitTime) : null,
                         tags: jsonArr(trade.tags),

@@ -51,13 +51,15 @@ export async function GET(request: Request) {
         if (type === 'trades') {
             const trades = await prisma.trade.findMany({
                 where: { userId },
-                include: { screenshots: true },
+                include: { screenshots: true, strategy: { select: { name: true } } },
                 orderBy: { entryTime: 'desc' }
             });
 
-            // Format trades to match legacy API interface
+            // Format trades to match legacy API interface (the client expects
+            // `strategy` to be the strategy's name).
             const formatted = trades.map(t => ({
                 ...t,
+                strategy: t.strategy?.name ?? '',
                 tags: t.tags ? JSON.parse(t.tags) : [],
                 confluences: t.confluences ? JSON.parse(t.confluences) : [],
                 mistakes: t.mistakes ? JSON.parse(t.mistakes) : [],
