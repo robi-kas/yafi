@@ -1,7 +1,16 @@
 import { NextResponse } from 'next/server';
 import prisma from '@/lib/db';
 
+// Called by the MT5 Expert Advisor, which has no browser session. It must send
+// the user's private webhook token (Settings -> MT5) as the `x-yafi-token`
+// header or `?token=` query parameter; the token decides whose journal it is.
 export async function POST(request: Request) {
+    const token = request.headers.get('x-yafi-token') || new URL(request.url).searchParams.get('token');
+    if (!token) return NextResponse.json({ error: 'Missing webhook token' }, { status: 401 });
+    const settings = await prisma.userSettings.findUnique({ where: { webhookToken: token } });
+    if (!settings) return NextResponse.json({ error: 'Invalid webhook token' }, { status: 401 });
+    const userId = settings.userId;
+
     try {
         const data = await request.json();
         
@@ -16,18 +25,18 @@ export async function POST(request: Request) {
         // Find or create a default account for the MT5 sync
         let accountId = '';
         const existingAccount = await prisma.account.findFirst({
-            where: { name: { contains: data.account?.toString() || 'MT5' } }
+            where: { userId, name: { contains: data.account?.toString() || 'MT5' } }
         });
         
         if (existingAccount) {
             accountId = existingAccount.id;
         } else {
-            const firstAcc = await prisma.account.findFirst();
+            const firstAcc = await prisma.account.findFirst({ where: { userId } });
             if (firstAcc) {
                 accountId = firstAcc.id;
             } else {
                 const newAcc = await prisma.account.create({ 
-                    data: { name: `MT5 Account ${data.account || ''}`, type: 'Live', broker: 'MetaTrader 5', balance: 0, currency: 'USD' } 
+                    data: { userId, name: `MT5 Account ${data.account || ''}`, type: 'Live', broker: 'MetaTrader 5', balance: 0, currency: 'USD' } 
                 });
                 accountId = newAcc.id;
             }
@@ -42,7 +51,7 @@ export async function POST(request: Request) {
             });
             
             if (existingTrade) {
-                continue;
+                continue; // already synced (or a ticket owned by someone else)
             }
 
             const pnl = deal.profit;
@@ -56,6 +65,7 @@ export async function POST(request: Request) {
             await prisma.trade.create({
                 data: {
                     id: tradeId,
+                    userId,
                     accountId: accountId,
                     symbol: deal.symbol,
                     market: 'forex', // Default assumption for MT5 unless otherwise specified

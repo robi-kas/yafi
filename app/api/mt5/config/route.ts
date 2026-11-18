@@ -1,25 +1,32 @@
 import { NextResponse } from 'next/server';
-import fs from 'fs';
-import path from 'path';
+import prisma from '@/lib/db';
+import { getUserId, unauthorized } from '@/lib/auth';
+import { getOrCreateSettings } from '@/lib/user-settings';
 
-const configPath = path.join(process.cwd(), 'mt5-config.json');
+const DEFAULT_CONFIG = { account: '', password: '', server: 'Exness-MT5Real27' };
 
 export async function GET() {
+    const userId = await getUserId();
+    if (!userId) return unauthorized();
     try {
-        if (fs.existsSync(configPath)) {
-            const data = fs.readFileSync(configPath, 'utf8');
-            return NextResponse.json(JSON.parse(data));
-        }
-        return NextResponse.json({ account: '', password: '', server: 'Exness-MT5Real27' });
+        const settings = await getOrCreateSettings(userId);
+        const config = (settings.mt5Config as Record<string, unknown> | null) ?? DEFAULT_CONFIG;
+        return NextResponse.json({ ...config, webhookToken: settings.webhookToken });
     } catch (err: any) {
         return NextResponse.json({ error: err.message }, { status: 500 });
     }
 }
 
 export async function POST(request: Request) {
+    const userId = await getUserId();
+    if (!userId) return unauthorized();
     try {
-        const data = await request.json();
-        fs.writeFileSync(configPath, JSON.stringify(data, null, 2), 'utf8');
+        const { account = '', password = '', server = '' } = await request.json();
+        await getOrCreateSettings(userId);
+        await prisma.userSettings.update({
+            where: { userId },
+            data: { mt5Config: { account: String(account), password: String(password), server: String(server) } },
+        });
         return NextResponse.json({ success: true });
     } catch (err: any) {
         return NextResponse.json({ error: err.message }, { status: 500 });

@@ -10,6 +10,7 @@ datasource db {
 
 model Account {
   id          String   @id @default(cuid())
+  userId           String   // Supabase auth.users.id
   name        String
   type        String   // personal, prop_firm, demo
   broker      String
@@ -20,21 +21,28 @@ model Account {
   syncStatus  String   @default("ACTIVE") // ACTIVE, PAUSED, MAINTENANCE
 
   trades      Trade[]
+
+  @@index([userId])
 }
 
 model Strategy {
   id           String   @id @default(cuid())
-  name         String   @unique
+  userId           String   // Supabase auth.users.id
+  name         String
   description  String
   rules        String?
   markets      String?  // JSON stringified array
   riskPerTrade Float?
 
   trades       Trade[]
+
+  @@index([userId])
+  @@unique([userId, name])
 }
 
 model ImportBatch {
   id          String   @id @default(cuid())
+  userId           String   // Supabase auth.users.id
   source      String
   status      String   @default("COMPLETED")
   importDate  DateTime @default(now())
@@ -43,6 +51,8 @@ model ImportBatch {
 
   trades        Trade[]
   stagedRecords StagedRecord[]
+
+  @@index([userId])
 }
 
 model StagedRecord {
@@ -109,6 +119,7 @@ model BrokerDeal {
 
 model Trade {
   id               String   @id @default(cuid())
+  userId           String   // Supabase auth.users.id
   symbol           String
   originalBrokerSymbol String?
   displaySymbol    String?
@@ -191,6 +202,8 @@ model Trade {
 
   createdAt        DateTime @default(now())
   updatedAt        DateTime @updatedAt
+
+  @@index([userId])
 }
 
 model TradeScreenshot {
@@ -203,15 +216,19 @@ model TradeScreenshot {
 
 model NoteFolder {
   id        String   @id @default(cuid())
+  userId           String   // Supabase auth.users.id
   name      String
   color     String?
   notes     Note[]
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
+
+  @@index([userId])
 }
 
 model Note {
   id        String      @id @default(cuid())
+  userId           String   // Supabase auth.users.id
   title     String
   content   String
   color     String?
@@ -219,4 +236,14 @@ model Note {
   folder    NoteFolder? @relation(fields: [folderId], references: [id], onDelete: SetNull)
   createdAt DateTime    @default(now())
   updatedAt DateTime    @updatedAt
+
+  @@index([userId])
+}
+
+model UserSettings {
+  userId       String   @id // Supabase auth.users.id
+  mt5Config    Json?
+  webhookToken String   @unique
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
 }

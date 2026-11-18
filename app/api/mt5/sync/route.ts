@@ -1,13 +1,17 @@
 import { NextResponse } from 'next/server';
 import { FileStorageAdapter } from '@/lib/storage/file-adapter';
-import { exec } from 'child_process';
+import { execFile } from 'child_process';
 import { promisify } from 'util';
 import path from 'path';
+import { getUserId, unauthorized } from '@/lib/auth';
 
-const execAsync = promisify(exec);
+const execFileAsync = promisify(execFile);
 const db = new FileStorageAdapter();
 
 export async function POST(request: Request) {
+    const userId = await getUserId();
+    if (!userId) return unauthorized();
+
     try {
         const { account, password, server, fromDate, toDate } = await request.json();
         
@@ -19,13 +23,14 @@ export async function POST(request: Request) {
         const scriptPath = path.join(process.cwd(), 'scripts', 'mt5_bridge.py');
         
         // Execute the python script with credentials and optional dates
-        let cmd = `python "${scriptPath}" "${account}" "${password}" "${server}"`;
+        // Arguments are passed directly (no shell), so user input can't inject commands.
+        const args = [scriptPath, String(account), String(password), String(server)];
         if (fromDate && toDate) {
-            cmd += ` "${fromDate}" "${toDate}"`;
+            args.push(String(fromDate), String(toDate));
         }
         
         console.log(`Running MT5 Bridge for account: ${account} on server: ${server} from ${fromDate || 'default'} to ${toDate || 'default'}`);
-        const { stdout, stderr } = await execAsync(cmd);
+        const { stdout, stderr } = await execFileAsync('python', args, { timeout: 60000 });
         
         // Attempt to parse the JSON output from the python script
         let data;

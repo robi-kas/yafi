@@ -8,12 +8,16 @@ export class ApiStorageAdapter implements StorageAdapter {
         }
 
         const response = await fetch(url, { ...defaultOptions, ...options })
+        if (response.status === 401 && typeof window !== 'undefined') {
+            window.location.assign('/login')
+            throw new Error('Your session has expired. Please sign in again.')
+        }
         const text = await response.text()
         let json: any
         try {
             json = JSON.parse(text)
         } catch {
-            throw new Error('Could not connect to the local database API (received HTML instead of JSON). Restart the app after rebuilding.')
+            throw new Error(`Unexpected server response (${response.status}). Please try again.`)
         }
 
         if (!response.ok) {

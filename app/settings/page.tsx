@@ -21,6 +21,7 @@ import {
     RefreshCw,
 } from "@/components/icons"
 import { Button } from "@/components/ui/button"
+import { useCurrentUser } from "@/hooks/use-current-user"
 
 const settingsSections = [
     {
@@ -28,7 +29,7 @@ const settingsSections = [
         icon: User,
         description: "Manage your personal details and broker connections",
         items: [
-            { label: "Email", value: "yafettadele339@gmail.com" },
+            { label: "Email", value: "" }, // filled with the signed-in user's email at render time
             { label: "Role", value: "Forex Trader" },
         ],
     },
@@ -45,6 +46,7 @@ const settingsSections = [
 ]
 
 export default function SettingsPage() {
+    const currentUser = useCurrentUser()
     const { trades, accounts, strategies, addTrade, addAccount, addStrategy, refreshMetrics, addNotification } = useDashboard()
     const fileInputRef = useRef<HTMLInputElement>(null)
     const [importing, setImporting] = useState(false)
@@ -450,7 +452,7 @@ export default function SettingsPage() {
                                             }`}
                                     >
                                         <span className="text-sm font-medium">{item.label}</span>
-                                        <span className="text-sm text-muted-foreground font-mono">{item.value}</span>
+                                        <span className="text-sm text-muted-foreground font-mono">{item.label === "Email" ? (currentUser?.email ?? "…") : item.value}</span>
                                     </div>
                                 ))}
                             </div>

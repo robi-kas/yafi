@@ -34,3 +34,5 @@ database.sqlite
 database.json
 database*.json
 database*.db
+# local MT5 credentials (never commit)
+mt5-config.json

@@ -18,9 +18,11 @@ import {
   ChevronLeft,
   ChevronRight,
   Calendar as CalendarIcon,
-  StickyNote
+  StickyNote,
+  LogOut,
 } from "@/components/icons"
 import { ThemeToggle } from "./theme-toggle"
+import { useCurrentUser, signOut } from "@/hooks/use-current-user"
 import { Button } from "@/components/ui/button"
 
 const navItems = [
@@ -44,6 +46,9 @@ interface SidebarProps {
 
 export function Sidebar({ onOpenCommand, isOpen, onClose, isCollapsed, onToggleCollapse }: SidebarProps) {
   const pathname = usePathname()
+  const user = useCurrentUser()
+  const displayName = (user?.user_metadata?.full_name as string | undefined) || user?.email?.split("@")[0] || ""
+  const initials = (displayName || "?").slice(0, 2).toUpperCase()
 
   return (
     <>
@@ -164,13 +169,23 @@ export function Sidebar({ onOpenCommand, isOpen, onClose, isCollapsed, onToggleC
           {/* User */}
           <div className={cn("mt-4 flex items-center gap-3 px-3", isCollapsed && "px-0 justify-center")}>
             <div className="w-8 h-8 bg-surface border border-border flex items-center justify-center shrink-0">
-              <span className="text-xs font-mono text-muted-foreground">TR</span>
+              <span className="text-xs font-mono text-muted-foreground">{initials}</span>
             </div>
             {!isCollapsed && (
               <div className="flex-1 min-w-0">
-                <p className="text-sm font-medium truncate">Yafet fx </p>
-                <p className="text-xs text-muted-foreground truncate">trader</p>
+                <p className="text-sm font-medium truncate">{displayName}</p>
+                <p className="text-xs text-muted-foreground truncate">{user?.email ?? ""}</p>
               </div>
+            )}
+            {!isCollapsed && (
+              <button
+                onClick={signOut}
+                title="Sign out"
+                aria-label="Sign out"
+                className="p-1.5 text-muted-foreground hover:text-foreground hover:bg-surface-hover transition-colors"
+              >
+                <LogOut className="w-4 h-4" />
+              </button>
             )}
           </div>
         </div>

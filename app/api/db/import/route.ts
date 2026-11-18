@@ -1,7 +1,13 @@
 import { NextResponse } from 'next/server';
 import prisma from '@/lib/db';
+import { getUserId, unauthorized } from '@/lib/auth';
+
+const jsonArr = (v: any) => (v ? JSON.stringify(v) : null);
 
 export async function POST(request: Request) {
+    const userId = await getUserId();
+    if (!userId) return unauthorized();
+
     try {
         let data: any;
         const contentType = request.headers.get('content-type') || '';
@@ -20,116 +26,118 @@ export async function POST(request: Request) {
         }
 
         let saved = 0;
-        let defaultAccountId = '';
-        const firstAcc = await prisma.account.findFirst();
-        if (firstAcc) {
-            defaultAccountId = firstAcc.id;
-        } else {
-            const newAcc = await prisma.account.create({ data: { name: 'Imported Account', type: 'Live', broker: 'Unknown', balance: 0, currency: 'USD' } });
-            defaultAccountId = newAcc.id;
-        }
         const errors: string[] = [];
 
         // Import accounts
-        if (data.accounts?.length) {
-            for (const acc of data.accounts) {
-                try {
-                    await prisma.account.upsert({
-                        where: { id: acc.id || "missing" },
-                        update: {
-                            name: acc.name,
-                            type: acc.type || "Live",
-                            broker: acc.broker,
-                            balance: acc.balance,
-                            currency: acc.currency || "USD",
-                            lastUpdated: new Date()
-                        },
-                        create: {
-                            id: acc.id,
-                            name: acc.name,
-                            type: acc.type || "Live",
-                            broker: acc.broker,
-                            balance: acc.balance,
-                            currency: acc.currency || "USD",
-                            lastUpdated: new Date()
-                        }
-                    });
-                    saved++;
-                } catch (err: any) {
-                    errors.push(`Account "${acc.name || '?'}": ${err.message}`);
+        for (const acc of data.accounts || []) {
+            try {
+                const fields = {
+                    name: acc.name,
+                    type: acc.type || "Live",
+                    broker: acc.broker,
+                    balance: acc.balance,
+                    currency: acc.currency || "USD",
+                    lastUpdated: new Date()
+                };
+                const existing = acc.id
+                    ? await prisma.account.findUnique({ where: { id: acc.id }, select: { userId: true } })
+                    : null;
+                if (existing && existing.userId !== userId) {
+                    errors.push(`Account "${acc.name || '?'}": ID belongs to another user, skipped`);
+                    continue;
                 }
+                if (existing) {
+                    await prisma.account.update({ where: { id: acc.id }, data: fields });
+                } else {
+                    await prisma.account.create({ data: { ...fields, id: acc.id || undefined, userId } });
+                }
+                saved++;
+            } catch (err: any) {
+                errors.push(`Account "${acc.name || '?'}": ${err.message}`);
             }
         }
 
-        // Import strategies
-        if (data.strategies?.length) {
-            for (const strat of data.strategies) {
-                try {
-                    await prisma.strategy.upsert({
-                        where: { id: strat.id || "missing" },
-                        update: {
-                            name: strat.name,
-                            description: strat.description || '',
-                            rules: strat.rules,
-                            markets: strat.markets ? JSON.stringify(strat.markets) : null
-                        },
-                        create: {
-                            id: strat.id,
-                            name: strat.name,
-                            description: strat.description || '',
-                            rules: strat.rules,
-                            markets: strat.markets ? JSON.stringify(strat.markets) : null
-                        }
-                    });
-                    saved++;
-                } catch (err: any) {
-                    errors.push(`Strategy "${strat.name || '?'}": ${err.message}`);
+        // Import strategies (names are unique per user)
+        for (const strat of data.strategies || []) {
+            try {
+                const fields = {
+                    name: strat.name,
+                    description: strat.description || '',
+                    rules: strat.rules,
+                    markets: strat.markets ? JSON.stringify(strat.markets) : null
+                };
+                const byId = strat.id
+                    ? await prisma.strategy.findUnique({ where: { id: strat.id }, select: { id: true, userId: true } })
+                    : null;
+                if (byId && byId.userId !== userId) {
+                    errors.push(`Strategy "${strat.name || '?'}": ID belongs to another user, skipped`);
+                    continue;
                 }
+                const target = byId || await prisma.strategy.findFirst({ where: { userId, name: strat.name }, select: { id: true } });
+                if (target) {
+                    await prisma.strategy.update({ where: { id: target.id }, data: fields });
+                } else {
+                    await prisma.strategy.create({ data: { ...fields, id: strat.id || undefined, userId } });
+                }
+                saved++;
+            } catch (err: any) {
+                errors.push(`Strategy "${strat.name || '?'}": ${err.message}`);
             }
         }
 
         // Import trades
         if (data.trades?.length) {
+            const ownedAccounts = new Set(
+                (await prisma.account.findMany({ where: { userId }, select: { id: true } })).map(a => a.id)
+            );
+            const ownedStrategies = new Set(
+                (await prisma.strategy.findMany({ where: { userId }, select: { id: true } })).map(s => s.id)
+            );
+
+            let defaultAccountId = ownedAccounts.values().next().value as string | undefined;
+            if (!defaultAccountId) {
+                const newAcc = await prisma.account.create({
+                    data: { userId, name: 'Imported Account', type: 'Live', broker: 'Unknown', balance: 0, currency: 'USD' }
+                });
+                defaultAccountId = newAcc.id;
+                ownedAccounts.add(newAcc.id);
+            }
+
             for (const trade of data.trades) {
                 try {
-                    const dataToSave = { ...trade };
-                    delete dataToSave.id;
-                    delete dataToSave.riskPercent; // Strip extraneous fields
-                    delete dataToSave.strategy;
+                    const existing = trade.id
+                        ? await prisma.trade.findUnique({ where: { id: trade.id }, select: { userId: true } })
+                        : null;
+                    if (existing && existing.userId !== userId) {
+                        errors.push(`Trade "${trade.symbol || '?'}": ID belongs to another user, skipped`);
+                        continue;
+                    }
 
-                    // If accountId is not present but account is, or we just rely on imported IDs:
-                    await prisma.trade.upsert({
-                        where: { id: trade.id || "missing" },
-                        update: {
-                            ...dataToSave,
-                            rrPlanned: dataToSave.rrPlanned ? parseFloat(dataToSave.rrPlanned) : null,
-                            rrAchieved: dataToSave.rrAchieved ? parseFloat(dataToSave.rrAchieved) : null,
-                            accountId: trade.accountId || defaultAccountId,
-                            entryTime: trade.entryTime ? new Date(trade.entryTime) : new Date(),
-                            exitTime: trade.exitTime ? new Date(trade.exitTime) : null,
-                            tags: trade.tags ? JSON.stringify(trade.tags) : null,
-                            confluences: trade.confluences ? JSON.stringify(trade.confluences) : null,
-                            mistakes: trade.mistakes ? JSON.stringify(trade.mistakes) : null,
-                            emotionTags: trade.emotionTags ? JSON.stringify(trade.emotionTags) : null,
-                            mistakeTags: trade.mistakeTags ? JSON.stringify(trade.mistakeTags) : null,
-                            screenshots: undefined
-                        },
-                        create: {
-                            ...dataToSave,
-                            rrPlanned: dataToSave.rrPlanned ? parseFloat(dataToSave.rrPlanned) : null,
-                            rrAchieved: dataToSave.rrAchieved ? parseFloat(dataToSave.rrAchieved) : null,
-                            id: trade.id, // preserve imported ID
-                            accountId: trade.accountId || defaultAccountId,
-                            entryTime: trade.entryTime ? new Date(trade.entryTime) : new Date(),
-                            exitTime: trade.exitTime ? new Date(trade.exitTime) : null,
-                            tags: trade.tags ? JSON.stringify(trade.tags) : null,
-                            confluences: trade.confluences ? JSON.stringify(trade.confluences) : null,
-                            mistakes: trade.mistakes ? JSON.stringify(trade.mistakes) : null,
-                            emotionTags: trade.emotionTags ? JSON.stringify(trade.emotionTags) : null,
-                            mistakeTags: trade.mistakeTags ? JSON.stringify(trade.mistakeTags) : null,
-                            screenshots: undefined
-                        }
-                    });
+                    const dataToSave = { ...trade };
+                    for (const k of ['id', 'userId', 'riskPercent', 'strategy', 'account', 'screenshots']) {
+                        delete dataToSave[k];
+                    }
+
+                    const fields = {
+                        ...dataToSave,
+                        rrPlanned: dataToSave.rrPlanned ? parseFloat(dataToSave.rrPlanned) : null,
+                        rrAchieved: dataToSave.rrAchieved ? parseFloat(dataToSave.rrAchieved) : null,
+                        accountId: ownedAccounts.has(trade.accountId) ? trade.accountId : defaultAccountId,
+                        strategyId: ownedStrategies.has(trade.strategyId) ? trade.strategyId : null,
+                        entryTime: trade.entryTime ? new Date(trade.entryTime) : new Date(),
+                        exitTime: trade.exitTime ? new Date(trade.exitTime) : null,
+                        tags: jsonArr(trade.tags),
+                        confluences: jsonArr(trade.confluences),
+                        mistakes: jsonArr(trade.mistakes),
+                        emotionTags: jsonArr(trade.emotionTags),
+                        mistakeTags: jsonArr(trade.mistakeTags),
+                    };
+
+                    if (existing) {
+                        await prisma.trade.update({ where: { id: trade.id }, data: fields });
+                    } else {
+                        await prisma.trade.create({ data: { ...fields, id: trade.id || undefined, userId } });
+                    }
                     saved++;
                 } catch (err: any) {
                     errors.push(`Trade "${trade.symbol || '?'}": ${err.message}`);

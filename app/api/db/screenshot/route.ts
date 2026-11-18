@@ -1,9 +1,13 @@
 import { NextResponse } from 'next/server';
 import { FileStorageAdapter } from '@/lib/storage/file-adapter';
+import { getUserId, unauthorized } from '@/lib/auth';
 
 const db = new FileStorageAdapter();
 
 export async function GET(request: Request) {
+    const userId = await getUserId();
+    if (!userId) return unauthorized();
+
     const { searchParams } = new URL(request.url);
     const id = searchParams.get('id');
     const indexStr = searchParams.get('index');

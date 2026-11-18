@@ -2,7 +2,8 @@ import { createServerClient } from '@supabase/ssr'
 import { NextResponse, type NextRequest } from 'next/server'
 
 export async function updateSession(request: NextRequest) {
-  // Desktop / local SQLite mode: never send API calls through Supabase auth.
+  // API routes authenticate themselves (lib/auth.ts) and answer 401 JSON
+  // instead of redirecting; the MT5 webhook uses a token instead of a session.
   if (request.nextUrl.pathname.startsWith('/api')) {
     return NextResponse.next({ request })
   }
