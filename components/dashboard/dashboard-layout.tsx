@@ -8,7 +8,7 @@ import { CommandSearch, useCommandSearch } from "./command-search"
 import { NotificationToast } from "./notification-toast"
 import { DashboardProvider } from "@/context/dashboard-context"
 import { motion, AnimatePresence } from "framer-motion"
-import { Menu, Search } from "lucide-react"
+import { Menu, Search } from "@/components/icons"
 import Link from "next/link"
 
 interface DashboardLayoutProps {
@@ -34,9 +34,7 @@ export function DashboardLayout({ children }: DashboardLayoutProps) {
                 <Menu className="w-5 h-5" />
               </button>
               <Link href="/" className="flex items-center gap-2">
-                <div className="w-6 h-6 bg-lime flex items-center justify-center">
-                  <span className="text-background font-mono text-xs font-bold">Y</span>
-                </div>
+                <img src="/logo-mark.png" alt="YAFI logo" width={24} height={24} className="w-6 h-6" />
                 <span className="font-semibold">YAFI</span>
               </Link>
             </div>

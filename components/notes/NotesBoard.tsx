@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { Plus, Folder as FolderIcon, X, Maximize2, MoreVertical, Check, Trash2, Edit2, Bold, Italic, Heading2, List, Table as TableIcon, Columns, Rows, Combine, SplitSquareHorizontal, Trash, Minus } from "lucide-react";
+import { Plus, Folder as FolderIcon, X, Maximize2, MoreVertical, Check, Trash2, Edit2, Bold, Italic, Heading2, List, Table as TableIcon, Columns, Rows, Combine, SplitSquareHorizontal, Trash, Minus } from "@/components/icons";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";

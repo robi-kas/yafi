@@ -18,7 +18,7 @@ import {
   BarChart3,
   Calendar,
   Award,
-} from "lucide-react"
+} from "@/components/icons"
 import { getWinLossCounts, calculateWinRate } from "@/lib/trading-metrics"
 
 interface DailyDiscipline {

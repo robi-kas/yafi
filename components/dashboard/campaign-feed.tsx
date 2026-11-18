@@ -1,7 +1,7 @@
 "use client"
 
 import { cn } from "@/lib/utils"
-import { ExternalLink, Play, Pause, MoreHorizontal } from "lucide-react"
+import { ExternalLink, Play, Pause, MoreHorizontal } from "@/components/icons"
 import { useDashboard, type Campaign, type CampaignStatus } from "@/context/dashboard-context"
 import { Button } from "@/components/ui/button"
 import {

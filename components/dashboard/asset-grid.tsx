@@ -4,7 +4,7 @@ import { useState } from "react"
 import Image from "next/image"
 import { motion } from "framer-motion"
 import { cn } from "@/lib/utils"
-import { Eye, Heart, Share2, MoreHorizontal, Play, ImageIcon, Trash2 } from "lucide-react"
+import { Eye, Heart, Share2, MoreHorizontal, Play, ImageIcon, Trash2 } from "@/components/icons"
 import { useDashboard, type Asset } from "@/context/dashboard-context"
 import {
   DropdownMenu,

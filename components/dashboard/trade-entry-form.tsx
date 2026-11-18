@@ -7,7 +7,7 @@ import { getTradeEditMode } from "@/lib/trade-mode"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
-import { X, Upload, AlertTriangle } from "lucide-react"
+import { X, Upload, AlertTriangle } from "@/components/icons"
 
 const MARKET_SYMBOLS: Record<string, string[]> = {
   forex: ["EURUSD", "GBPUSD", "USDJPY", "AUDUSD", "USDCAD", "USDCHF", "NZDUSD", "EURGBP", "EURJPY"],

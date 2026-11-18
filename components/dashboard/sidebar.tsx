@@ -19,7 +19,7 @@ import {
   ChevronRight,
   Calendar as CalendarIcon,
   StickyNote
-} from "lucide-react"
+} from "@/components/icons"
 import { ThemeToggle } from "./theme-toggle"
 import { Button } from "@/components/ui/button"
 
@@ -65,9 +65,7 @@ export function Sidebar({ onOpenCommand, isOpen, onClose, isCollapsed, onToggleC
         <div className={cn("p-6 border-b border-border transition-all", isCollapsed && "p-4")}>
           <div className="flex items-center justify-between mb-4">
             <Link href="/" className="flex items-center gap-3 group" onClick={onClose}>
-              <div className="w-8 h-8 flex items-center justify-center bg-sidebar-ring shrink-0">
-                <span className="text-background font-mono text-sm font-bold">Y</span>
-              </div>
+              <img src="/logo-mark.png" alt="YAFI logo" width={32} height={32} className="w-8 h-8 shrink-0" />
               {!isCollapsed && <span className="text-lg font-semibold tracking-tight">YAFI</span>}
             </Link>
             <button

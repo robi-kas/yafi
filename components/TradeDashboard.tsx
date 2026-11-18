@@ -3,7 +3,7 @@
 import React, { useState } from 'react'
 import { Button } from "@/components/ui/button"
 import { useDashboard, Trade } from "@/context/dashboard-context"
-import { RefreshCw, Download, ArrowRight, WifiOff, Zap, CheckCircle2 } from "lucide-react"
+import { RefreshCw, Download, ArrowRight, WifiOff, Zap, CheckCircle2 } from "@/components/icons"
 
 interface MT5Trade {
     ticket: number

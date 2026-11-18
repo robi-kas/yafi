@@ -7,7 +7,7 @@ import { useDashboard } from "@/context/dashboard-context"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { ImageViewer } from "@/components/ui/image-viewer"
-import { Plus, Trash2, Edit2, Search, ChevronDown, ChevronRight, AlertTriangle } from "lucide-react"
+import { Plus, Trash2, Edit2, Search, ChevronDown, ChevronRight, AlertTriangle } from "@/components/icons"
 import { calcResult as sharedCalcResult, calculateWinRate } from "@/lib/trading-metrics"
 
 const MODEL_ABBR: Record<string, string> = {

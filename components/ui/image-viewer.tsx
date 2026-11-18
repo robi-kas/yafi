@@ -1,7 +1,7 @@
 "use client"
 
 import { useEffect, useCallback, useRef, useState } from "react"
-import { X, ZoomIn, ZoomOut, RotateCw } from "lucide-react"
+import { X, ZoomIn, ZoomOut, RotateCw } from "@/components/icons"
 
 interface ImageViewerProps {
   src: string

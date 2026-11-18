@@ -3,7 +3,7 @@
 import { useState } from "react"
 import { DashboardLayout } from "@/components/dashboard/dashboard-layout"
 import { AssetGrid, AssetFilters } from "@/components/dashboard/asset-grid"
-import { ImageIcon, Upload, FolderOpen, Grid3X3, X } from "lucide-react"
+import { ImageIcon, Upload, FolderOpen, Grid3X3, X } from "@/components/icons"
 import { Button } from "@/components/ui/button"
 import { useDashboard } from "@/context/dashboard-context"
 import { Input } from "@/components/ui/input"

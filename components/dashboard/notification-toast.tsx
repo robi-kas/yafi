@@ -2,7 +2,7 @@
 
 import { useDashboard } from "@/context/dashboard-context"
 import { motion, AnimatePresence } from "framer-motion"
-import { X, CheckCircle, AlertTriangle, AlertCircle, Info } from "lucide-react"
+import { X, CheckCircle, AlertTriangle, AlertCircle, Info } from "@/components/icons"
 import { cn } from "@/lib/utils"
 
 const iconMap = {

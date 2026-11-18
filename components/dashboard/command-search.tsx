@@ -12,7 +12,7 @@ import {
   FileText,
   TrendingUp,
   Search,
-} from "lucide-react"
+} from "@/components/icons"
 import {
   CommandDialog,
   CommandEmpty,

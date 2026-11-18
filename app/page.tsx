@@ -3,7 +3,7 @@
 import React, { useState } from "react"
 import { DashboardLayout } from "@/components/dashboard/dashboard-layout"
 import { GlanceCard } from "@/components/dashboard/glance-card"
-import { TrendingUp, TrendingDown, Target, RefreshCw, Trophy, Zap, Trash2 } from "lucide-react"
+import { TrendingUp, TrendingDown, Target, RefreshCw, Trophy, Zap, Trash2 } from "@/components/icons"
 import { useDashboard, Trade, Account, Strategy } from "@/context/dashboard-context"
 import { Button } from "@/components/ui/button"
 import { PositionSizeCalculator as LotSizeCalculator } from "@/components/dashboard/risk-calculator"

@@ -15,7 +15,7 @@ import {
   TrendingUp, TrendingDown, Target, Zap, AlertTriangle, Info,
   BarChart3, Activity, Brain, Calendar, DollarSign, LineChart,
   Sun, Star, Flame, ArrowUpRight, ArrowDownRight,
-} from "lucide-react"
+} from "@/components/icons"
 import {
   BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer,
   Line, AreaChart, Area, Cell, ComposedChart,

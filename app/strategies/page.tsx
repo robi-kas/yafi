@@ -7,7 +7,7 @@ import { DashboardLayout } from "@/components/dashboard/dashboard-layout"
 import { useDashboard } from "@/context/dashboard-context"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
-import { Plus, Edit2, Trash2, TrendingUp, BarChart3 } from "lucide-react"
+import { Plus, Edit2, Trash2, TrendingUp, BarChart3 } from "@/components/icons"
 import { calculateWinRate, getWinLossCounts, calcResult } from "@/lib/trading-metrics"
 
 interface StrategyFormData {

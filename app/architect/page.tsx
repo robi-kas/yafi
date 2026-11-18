@@ -3,7 +3,7 @@
 import { useState } from "react"
 import { DashboardLayout } from "@/components/dashboard/dashboard-layout"
 import { GanttTimeline } from "@/components/dashboard/gantt-timeline"
-import { Calendar, Plus, Download, X } from "lucide-react"
+import { Calendar, Plus, Download, X } from "@/components/icons"
 import { Button } from "@/components/ui/button"
 import { useDashboard } from "@/context/dashboard-context"
 import { Input } from "@/components/ui/input"

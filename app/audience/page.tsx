@@ -1,7 +1,7 @@
 "use client"
 
 import { DashboardLayout } from "@/components/dashboard/dashboard-layout"
-import { Users, UserPlus, Target, TrendingUp } from "lucide-react"
+import { Users, UserPlus, Target, TrendingUp } from "@/components/icons"
 import { Button } from "@/components/ui/button"
 import {
   ResponsiveContainer,

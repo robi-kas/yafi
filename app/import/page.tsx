@@ -9,7 +9,7 @@ import {
   Upload, Check, ArrowRight, FileText, Table2, Image,
   X, ChevronDown, TrendingUp, TrendingDown, Zap, RefreshCw,
   ShieldCheck, AlertCircle, Loader2, CheckCircle2, FileUp
-} from "lucide-react"
+} from "@/components/icons"
 import {
   parseTradeFile, ParsedTrade, ImportFormat
 } from "@/lib/trade-import-parser"

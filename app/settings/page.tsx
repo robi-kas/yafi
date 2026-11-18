@@ -19,7 +19,7 @@ import {
     Loader2,
     Server,
     RefreshCw,
-} from "lucide-react"
+} from "@/components/icons"
 import { Button } from "@/components/ui/button"
 
 const settingsSections = [

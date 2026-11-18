@@ -5,7 +5,7 @@ import React from "react"
 import { useEffect, useState, useRef } from "react"
 import { motion, useMotionValue, useSpring, useTransform } from "framer-motion"
 import { cn } from "@/lib/utils"
-import { ArrowUp, ArrowDown } from "lucide-react"
+import { ArrowUp, ArrowDown } from "@/components/icons"
 import { Area, AreaChart, ResponsiveContainer } from "recharts"
 
 interface GlanceCardProps {

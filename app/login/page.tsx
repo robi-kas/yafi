@@ -37,6 +37,7 @@ export default function LoginPage({
     <div className="flex min-h-screen w-full items-center justify-center bg-background p-4">
       <div className="w-full max-w-md overflow-hidden rounded-2xl border border-border shadow-2xl bg-card text-card-foreground transition-all">
         <div className="flex flex-col items-center justify-center space-y-3 border-b border-border px-4 py-8 text-center sm:px-16">
+          <img src="/logo-mark.png" alt="YAFI logo" width={56} height={56} className="w-14 h-14" />
           <h3 className="text-2xl font-bold tracking-tight">
             Welcome Back
           </h3>

@@ -5,7 +5,7 @@ import { useDashboard, Trade } from "@/context/dashboard-context"
 import { format, subYears, eachDayOfInterval, startOfDay, isSameDay, parseISO } from "date-fns"
 import { cn } from "@/lib/utils"
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip"
-import { ChevronLeft, ChevronRight } from "lucide-react"
+import { ChevronLeft, ChevronRight } from "@/components/icons"
 
 export function TradeHeatmap() {
     const { trades } = useDashboard()

@@ -2,7 +2,7 @@
 
 import { useState } from "react"
 import { DashboardLayout } from "@/components/dashboard/dashboard-layout"
-import { Wallet, Plus, TrendingUp, AlertTriangle, CheckCircle2, X } from "lucide-react"
+import { Wallet, Plus, TrendingUp, AlertTriangle, CheckCircle2, X } from "@/components/icons"
 import { Button } from "@/components/ui/button"
 import { useDashboard } from "@/context/dashboard-context"
 import { Input } from "@/components/ui/input"
