@@ -1,30 +1,19 @@
 import { Metadata } from 'next'
 import { LoginForm } from './login-form'
 
+// Crawlers fetching yafijournal.com aren't signed in and are redirected here,
+// so this page carries the main brand preview (image from app/opengraph-image.png).
 export const metadata: Metadata = {
-  title: 'Sign in | YAFI',
-  description: 'Sign in to your YAFI trading journal to analyze your trades, manage your strategies, and track your performance.',
+  title: 'Sign in',
+  description: 'Sign in to YAFI Journal: your trading journal and performance analytics.',
   openGraph: {
-    title: 'Sign in | YAFI Trading Journal',
-    description: 'Securely access your trading data, performance metrics, and journal entries.',
-    url: 'https://yafijournal.com/login',
-    siteName: 'YAFI Trading Journal',
-    images: [
-      {
-        url: '/logo.png',
-        width: 512,
-        height: 512,
-        alt: 'YAFI Trading Journal',
-      },
-    ],
-    locale: 'en_US',
+    title: 'YAFI Journal | Trading Journal & Performance Analytics',
+    description:
+      'A trading journal for serious traders: log every trade, track your P&L, win rate and R, and build discipline with performance analytics.',
+    url: '/login',
+    siteName: 'YAFI Journal',
     type: 'website',
-  },
-  twitter: {
-    card: 'summary',
-    title: 'Sign in | YAFI Trading Journal',
-    description: 'Access your professional trading journal and analytics dashboard.',
-    images: ['/logo.png'],
+    images: [{ url: '/opengraph-image.png', width: 1200, height: 630, alt: 'YAFI Journal: trading journal and performance analytics' }],
   },
 }
 

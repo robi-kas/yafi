@@ -1,3 +1,5 @@
+import { rMultiple } from './instruments'
+
 export interface TradeMetricsInput {
   id: string
   entryPrice?: number | null
@@ -12,6 +14,7 @@ export interface TradeMetricsInput {
   tradeStatus?: string | null
   rrAchieved?: number | null
   symbol?: string | null
+  market?: string | null
   entryTime: string | Date
 }
 
@@ -50,6 +53,16 @@ export interface CalculatedMetrics {
 
 const BREAKEVEN_TOLERANCE_USD = 0.001; // Trades within ±$0.001 are considered breakeven
 
+/**
+ * One definition of "closed" used by every page: explicitly closed, or it has
+ * an exit price (a trade with an exit is finished even if its status flag
+ * still says open).
+ */
+export function isClosedTrade(t: { tradeStatus?: string | null; exitPrice?: number | null }): boolean {
+  if (t.tradeStatus === 'closed' || t.tradeStatus === 'breakeven') return true
+  return t.exitPrice != null && t.exitPrice !== 0
+}
+
 export function calculateMetrics(trades: TradeMetricsInput[]): CalculatedMetrics {
   const warnings: MetricWarnings = {
     missingInitialRisk: 0,
@@ -57,7 +70,7 @@ export function calculateMetrics(trades: TradeMetricsInput[]): CalculatedMetrics
     missingStrategy: 0,
   }
 
-  const closedTrades = trades.filter(t => t.tradeStatus === 'closed' || t.tradeStatus === 'breakeven' || (t.tradeStatus !== 'open' && t.exitPrice != null))
+  const closedTrades = trades.filter(isClosedTrade)
   const openTrades = trades.filter(t => !closedTrades.includes(t))
 
   let wins = 0
@@ -107,41 +120,22 @@ export function calculateMetrics(trades: TradeMetricsInput[]): CalculatedMetrics
       if (pnl < largestLoser) largestLoser = pnl
     }
 
-    // Calculate R
-    if (t.rrAchieved != null && t.rrAchieved !== 0) {
-      totalR += t.rrAchieved
+    // R multiple (recorded R, else P&L / dollar risk from the stop distance)
+    const r = rMultiple({ ...t, profitLoss: pnl })
+    if (r != null && Number.isFinite(r)) {
+      totalR += r
       validRCount++
-    } else if (t.entryPrice && t.stopLoss && t.lotSize && pnl !== 0) {
-      const riskPerUnit = Math.abs(t.entryPrice - t.stopLoss)
-      if (riskPerUnit > 0) {
-        let multiplier = 100000
-        if (t.symbol?.toLowerCase().includes('xau') || t.symbol?.toLowerCase().includes('gold')) {
-          multiplier = 10
-        } else if (t.symbol?.toLowerCase().includes('btc')) {
-          multiplier = 1
-        }
-        
-        const initialRiskUsd = riskPerUnit * t.lotSize * multiplier
-        if (initialRiskUsd > 0) {
-          totalR += (pnl / initialRiskUsd)
-          validRCount++
-        } else {
-          warnings.missingInitialRisk++
-        }
-      } else {
-        warnings.missingInitialRisk++
-      }
     } else {
       warnings.missingInitialRisk++
     }
   }
 
-  // Calculate Net P&L across ALL trades (open + closed) to match reconciled database
-  for (const t of trades) {
-    if (!closedTrades.includes(t)) {
-      netPnl += (t.profitLoss || 0) + (t.commission || 0) + (t.swap || 0)
-    }
-  }
+  // Realised P&L only comes from closed trades; open trades' floating P&L is
+  // reported separately so expectancy and win rate use the same population.
+  const closedNetPnl = netPnl
+  let openPnl = 0
+  for (const t of openTrades) openPnl += (t.profitLoss || 0) + (t.commission || 0) + (t.swap || 0)
+  netPnl = closedNetPnl + openPnl
 
   const nonBreakevenCount = wins + losses
   const winRateExcludingBreakevens = nonBreakevenCount > 0 ? (wins / nonBreakevenCount) * 100 : 0
@@ -151,11 +145,11 @@ export function calculateMetrics(trades: TradeMetricsInput[]): CalculatedMetrics
   const averageWinner = wins > 0 ? grossProfit / wins : 0
   const averageLoser = losses > 0 ? grossLoss / losses : 0
   
-  const expectancyPerClosed = closedTrades.length > 0 ? (netPnl / closedTrades.length) : 0
-  const expectancyPerNonBreakeven = nonBreakevenCount > 0 ? (netPnl / nonBreakevenCount) : 0
+  const expectancyPerClosed = closedTrades.length > 0 ? (closedNetPnl / closedTrades.length) : 0
+  const expectancyPerNonBreakeven = nonBreakevenCount > 0 ? (closedNetPnl / nonBreakevenCount) : 0
   const expectancyInR = validRCount > 0 ? (totalR / validRCount) : 0
 
-  const recoveryFactor = maxDrawdown > 0 ? netPnl / maxDrawdown : 0
+  const recoveryFactor = maxDrawdown > 0 ? closedNetPnl / maxDrawdown : 0
 
   return {
     totalTrades: trades.length,
@@ -191,11 +185,15 @@ export function calcResult(t: { profitLoss?: number | null }): "win" | "loss" | 
   return t.profitLoss > 0 ? "win" : "loss"
 }
 
-export function getWinLossCounts(trades: { profitLoss?: number | null }[]) {
+export function getWinLossCounts(trades: { profitLoss?: number | null; tradeStatus?: string | null; exitPrice?: number | null }[]) {
   let wins = 0
   let losses = 0
   let breakevens = 0
   for (const t of trades) {
+    // Same population as calculateMetrics: only finished trades count.
+    if ('exitPrice' in t || 'tradeStatus' in t) {
+      if (!isClosedTrade(t)) continue
+    }
     if (!t.profitLoss || Math.abs(t.profitLoss) <= BREAKEVEN_TOLERANCE_USD) breakevens++
     else if (t.profitLoss > BREAKEVEN_TOLERANCE_USD) wins++
     else if (t.profitLoss < -BREAKEVEN_TOLERANCE_USD) losses++

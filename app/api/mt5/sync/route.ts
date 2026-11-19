@@ -179,7 +179,7 @@ export async function POST(request: Request) {
                 notes: `Auto-synced from MT5 Account ${account}`
             };
 
-            await db.saveTrade(newTrade);
+            await db.saveTrade(newTrade as any); // legacy desktop bridge; replaced by MT5 webhook sync
             saved++;
         }
 

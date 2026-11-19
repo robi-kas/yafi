@@ -1,6 +1,6 @@
 "use client"
 
-import React, { useState } from "react"
+import React, { useEffect, useState } from "react"
 import { DashboardLayout } from "@/components/dashboard/dashboard-layout"
 import { useDashboard } from "@/context/dashboard-context"
 import { Button } from "@/components/ui/button"
@@ -45,11 +45,40 @@ export default function Discipline() {
     violations: [] as string[],
   })
 
-  const handleAddEntry = (e: React.FormEvent) => {
+  const [saveError, setSaveError] = useState<string | null>(null)
+  const [saving, setSaving] = useState(false)
+
+  // Load saved daily logs
+  useEffect(() => {
+    fetch("/api/discipline")
+      .then((r) => (r.ok ? r.json() : []))
+      .then((rows) => Array.isArray(rows) && setDisciplineLog(rows))
+      .catch(() => {})
+  }, [])
+
+  const handleAddEntry = async (e: React.FormEvent) => {
     e.preventDefault()
-    setDisciplineLog((prev) => [formData as DailyDiscipline, ...prev])
-    setFormData({ date: todayISO(), followedRules: true, emotionalControl: 7, notes: "", violations: [] })
-    setShowForm(false)
+    setSaveError(null)
+    setSaving(true)
+    try {
+      const res = await fetch("/api/discipline", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(formData),
+      })
+      const saved = await res.json().catch(() => ({}))
+      if (!res.ok) throw new Error(saved.error || "Could not save this day")
+      // One entry per day: replace an existing entry for the same date.
+      setDisciplineLog((prev) =>
+        [saved as DailyDiscipline, ...prev.filter((d) => d.date !== saved.date)].sort((a, b) => b.date.localeCompare(a.date))
+      )
+      setFormData({ date: todayISO(), followedRules: true, emotionalControl: 7, notes: "", violations: [] })
+      setShowForm(false)
+    } catch (err: any) {
+      setSaveError(err?.message || "Could not save this day")
+    } finally {
+      setSaving(false)
+    }
   }
 
   // Statistics
@@ -61,8 +90,16 @@ export default function Discipline() {
 
   // Emotional state vs trading results
   const emotionalAnalysis = (() => {
-    const high = trades.filter((t) => t.emotionalState === "confident" || t.emotionalState === "focused")
-    const low = trades.filter((t) => t.emotionalState === "anxious" || t.emotionalState === "frustrated")
+    // Newer trades record emotion tags; older ones the single emotionalState field.
+    const EMOTIONAL = ["fear", "fomo", "revenge", "overconfidence", "hesitation", "anxious", "frustrated", "greedy"]
+    const CALM = ["neutral", "calm", "confident", "focused", "disciplined"]
+    const tagsOf = (t: (typeof trades)[number]) =>
+      [...(t.emotionTags || []), t.emotionalState || ""].map((x) => String(x).toLowerCase()).filter(Boolean)
+    const low = trades.filter((t) => tagsOf(t).some((x) => EMOTIONAL.includes(x)))
+    const high = trades.filter((t) => {
+      const tags = tagsOf(t)
+      return tags.length > 0 && !tags.some((x) => EMOTIONAL.includes(x)) && tags.some((x) => CALM.includes(x))
+    })
 
     const { wins: highWins, losses: highLosses } = getWinLossCounts(high)
     const { wins: lowWins, losses: lowLosses } = getWinLossCounts(low)
@@ -119,13 +156,13 @@ export default function Discipline() {
           />
           <StatCard label="Avg emotional control" value={`${avgEmotionalControl}/10`} icon={Brain} sub="From daily logs" />
           <StatCard
-            label="Win rate when focused"
+            label="Win rate when calm"
             value={`${emotionalAnalysis.highEmotionalWinRate.toFixed(1)}%`}
             icon={TrendingUp}
             sub={`${emotionalAnalysis.highTradeCount} trades`}
           />
           <StatCard
-            label="Win rate when anxious"
+            label="Win rate when emotional"
             value={`${emotionalAnalysis.lowEmotionalWinRate.toFixed(1)}%`}
             icon={TrendingDown}
             sub={`${emotionalAnalysis.lowTradeCount} trades`}
@@ -138,8 +175,8 @@ export default function Discipline() {
             <PanelHeader title="Emotional state impact" description="How your state affects outcomes" icon={Brain} />
             <PanelBody className="space-y-5">
               {[
-                { label: "Focused / confident", rate: emotionalAnalysis.highEmotionalWinRate, bar: "bg-profit", text: "text-profit" },
-                { label: "Anxious / frustrated", rate: emotionalAnalysis.lowEmotionalWinRate, bar: "bg-loss", text: "text-loss" },
+                { label: "Calm / neutral", rate: emotionalAnalysis.highEmotionalWinRate, bar: "bg-profit", text: "text-profit" },
+                { label: "Emotional (fear, FOMO, revenge…)", rate: emotionalAnalysis.lowEmotionalWinRate, bar: "bg-loss", text: "text-loss" },
               ].map((row) => (
                 <div key={row.label}>
                   <div className="mb-2 flex items-center justify-between">
@@ -352,11 +389,12 @@ export default function Discipline() {
                 />
               </div>
 
+              {saveError && <p className="text-sm text-destructive">{saveError}</p>}
               <DialogFooter>
                 <Button type="button" variant="outline" onClick={() => setShowForm(false)}>
                   Cancel
                 </Button>
-                <Button type="submit">Save entry</Button>
+                <Button type="submit" disabled={saving}>{saving ? "Saving…" : "Save entry"}</Button>
               </DialogFooter>
             </form>
           </DialogContent>

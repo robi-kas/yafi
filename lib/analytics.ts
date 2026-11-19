@@ -1,4 +1,5 @@
 import { Trade } from "@/context/dashboard-context"
+import { rMultiple, initialRiskUsd } from "./instruments"
 import {
   calcResult,
   getWinLossCounts,
@@ -48,13 +49,7 @@ export function getEnhancedTrades(trades: Trade[]): Trade[] {
 }
 
 function getRMultiple(trade: Trade): number | null {
-  if (trade.rrAchieved != null && trade.rrAchieved !== 0) return trade.rrAchieved
-  if (!trade.entryPrice || !trade.stopLoss || !trade.lotSize || !trade.profitLoss) return null
-  const riskPerUnit = Math.abs(trade.entryPrice - trade.stopLoss)
-  if (riskPerUnit === 0) return null
-  const riskAmount = riskPerUnit * trade.lotSize * 100000
-  if (riskAmount === 0) return null
-  return trade.profitLoss / riskAmount
+  return rMultiple(trade as any)
 }
 
 function sumR(subset: Trade[]): number {
@@ -488,13 +483,8 @@ export interface RiskManagement {
 }
 
 export function getRiskManagement(trades: Trade[]): RiskManagement {
-  const withRisk = trades.filter(t => t.entryPrice && t.stopLoss && t.lotSize)
-  const avgRiskPerTrade = withRisk.length > 0
-    ? withRisk.reduce((s, t) => {
-      const risk = Math.abs((t.entryPrice || 0) - (t.stopLoss || 0)) * (t.lotSize || 0) * 100000
-      return s + risk
-    }, 0) / withRisk.length
-    : 0
+  const risks = trades.map(t => initialRiskUsd(t as any)).filter((r): r is number => r != null)
+  const avgRiskPerTrade = risks.length > 0 ? risks.reduce((a, b) => a + b, 0) / risks.length : 0
 
   const withRR = trades.filter(t => t.riskToReward && t.riskToReward > 0)
   const avgRRPlanned = withRR.length > 0

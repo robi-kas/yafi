@@ -10,7 +10,8 @@
     "start": "next start",
     "app": "electron .",
     "build:exe": "electron-builder --win",
-    "postinstall": "prisma generate"
+    "postinstall": "prisma generate",
+    "test": "vitest run"
   },
   "dependencies": {
     "@emotion/is-prop-valid": "latest",

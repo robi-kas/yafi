@@ -1326,19 +1326,6 @@ export function TradeEntryForm({ onClose, initialTrade, defaultEntryTime }: Trad
                    ))}
                  </div>
                </div>
-               <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
-                 <div>
-                   <Label className={labelCls}>RR Planned</Label>
-                   <Input
-                     type="number"
-                     step="0.1"
-                     value={formData.rrPlanned}
-                     onChange={(e) => handleInputChange("rrPlanned", e.target.value)}
-                     className="mt-1.5"
-                     placeholder="3.0"
-                   />
-                 </div>
-               </div>
              </div>
            </div>
 

@@ -15,10 +15,33 @@ const geistMono = Geist_Mono({
   variable: "--font-mono",
 });
 
+const SITE_NAME = 'YAFI Journal'
+const SITE_DESCRIPTION =
+  'A trading journal for serious traders: log every trade, track your P&L, win rate and R, and build discipline with performance analytics.'
+
+// Used for link previews (WhatsApp, Telegram, X, Facebook, LinkedIn...). The
+// preview image comes from app/opengraph-image.png and app/twitter-image.png.
 export const metadata: Metadata = {
-  title: 'YAFI | Trading Journal & Performance Analytics',
-  description: 'Professional trading journal platform for serious traders. Track trades, analyze performance, and improve discipline.',
-  generator: 'v0.app',
+  metadataBase: new URL('https://yafijournal.com'),
+  title: {
+    default: 'YAFI Journal | Trading Journal & Performance Analytics',
+    template: '%s | YAFI Journal',
+  },
+  description: SITE_DESCRIPTION,
+  applicationName: SITE_NAME,
+  openGraph: {
+    type: 'website',
+    siteName: SITE_NAME,
+    title: 'YAFI Journal | Trading Journal & Performance Analytics',
+    description: SITE_DESCRIPTION,
+    url: '/',
+    locale: 'en_US',
+  },
+  twitter: {
+    card: 'summary_large_image',
+    title: 'YAFI Journal | Trading Journal & Performance Analytics',
+    description: SITE_DESCRIPTION,
+  },
   icons: {
     icon: [
       { url: '/favicon.ico', sizes: 'any' },

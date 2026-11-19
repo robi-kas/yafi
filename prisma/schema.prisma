@@ -247,3 +247,18 @@ model UserSettings {
   createdAt    DateTime @default(now())
   updatedAt    DateTime @updatedAt
 }
+
+model DisciplineLog {
+  id               String   @id @default(cuid())
+  userId           String   // Supabase auth.users.id
+  date             String   // YYYY-MM-DD in the user's local time
+  followedRules    Boolean  @default(true)
+  emotionalControl Int      @default(7) // 1-10
+  notes            String   @default("")
+  violations       String?  // JSON stringified array
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+
+  @@unique([userId, date])
+  @@index([userId])
+}
