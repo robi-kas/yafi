@@ -14,7 +14,8 @@ const tabs = [
   { href: "/analytics", label: "Analytics", icon: AnalyticsIcon },
 ] as const
 
-// Floating dark pill with icon-only tabs and a round "+" button fused to its
+// Floating dark pill: the active tab expands into a green capsule with its
+// label, others are icon-only. A round "+" button is fused to its
 // right end. The pill and circle are drawn in a background layer merged by an
 // SVG "goo" filter, which produces the liquid neck between them; the icons sit
 // on top, unfiltered.
@@ -33,8 +34,6 @@ export function MobileNav({ onMore }: { onMore: () => void }) {
     if (pathname?.startsWith("/journal")) window.dispatchEvent(new Event(NEW_TRADE_EVENT))
     else router.push("/journal?new=1")
   }
-
-  const tabCls = "relative flex h-full flex-1 items-center justify-center transition-colors"
 
   return (
     <nav
@@ -77,20 +76,37 @@ export function MobileNav({ onMore }: { onMore: () => void }) {
                   href={tab.href}
                   aria-label={tab.label}
                   aria-current={active ? "page" : undefined}
-                  className={cn(tabCls, active ? "text-brand" : "text-zinc-400 active:text-zinc-100")}
+                  className={cn(
+                    "flex h-full min-w-0 items-center justify-center transition-[flex-grow] duration-300 ease-out",
+                    active ? "flex-[2]" : "flex-1"
+                  )}
                 >
-                  <tab.icon className="size-6" strokeWidth={active ? 2.2 : 1.6} />
+                  {/* Active tab expands into a soft green capsule with its name */}
                   <span
                     className={cn(
-                      "absolute bottom-[9px] size-1 rounded-full bg-brand transition-all duration-200",
-                      active ? "scale-100 opacity-100 shadow-[0_0_6px_var(--lime-glow)]" : "scale-0 opacity-0"
+                      "flex h-10 items-center rounded-full transition-all duration-300 ease-out",
+                      active
+                        ? "gap-2 bg-[#6ad62f]/15 px-3.5 text-[#86e651]"
+                        : "gap-0 px-2.5 text-zinc-400 active:text-zinc-100"
                     )}
-                  />
+                  >
+                    <tab.icon className="size-[22px] shrink-0" strokeWidth={active ? 2 : 1.6} />
+                    <span
+                      className={cn(
+                        "overflow-hidden whitespace-nowrap text-[13px] font-semibold transition-all duration-300 ease-out",
+                        active ? "max-w-[84px] opacity-100" : "max-w-0 opacity-0"
+                      )}
+                    >
+                      {tab.label}
+                    </span>
+                  </span>
                 </Link>
               )
             })}
-            <button type="button" onClick={onMore} aria-label="More" className={cn(tabCls, "text-zinc-400 active:text-zinc-100")}>
-              <Menu className="size-6" strokeWidth={1.6} />
+            <button type="button" onClick={onMore} aria-label="More" className="flex h-full flex-1 items-center justify-center text-zinc-400 transition-colors active:text-zinc-100">
+              <span className="flex h-10 items-center rounded-full px-2.5">
+                <Menu className="size-[22px]" strokeWidth={1.6} />
+              </span>
             </button>
           </div>
 
