@@ -1,6 +1,7 @@
 "use client"
 
 import React, { createContext, useContext, useState, useCallback, useEffect, useMemo, useRef } from "react"
+import { usePathname } from "next/navigation"
 import { StorageAdapter, Trade as StorageTrade, Strategy as StorageStrategy, Account as StorageAccount } from "@/lib/storage/types"
 import { ApiStorageAdapter } from "@/lib/storage/api-adapter"
 import { calculateWinRate, getWinLossCounts, calcResult, calculateMetrics } from "@/lib/trading-metrics"
@@ -270,9 +271,14 @@ export function DashboardProvider({ children }: { children: React.ReactNode }) {
     }
   }, [storage, addNotification])
 
+  // This provider wraps every page, including /login. Never load data there:
+  // signed-out requests return 401 and would bounce back to /login in a loop.
+  const pathname = usePathname()
+  const isAuthPage = !!pathname && (pathname.startsWith("/login") || pathname.startsWith("/auth"))
   useEffect(() => {
+    if (isAuthPage) return
     refreshMetrics()
-  }, [refreshMetrics])
+  }, [refreshMetrics, isAuthPage])
 
   const updateMetrics = useCallback(() => {
     if (trades.length === 0) {

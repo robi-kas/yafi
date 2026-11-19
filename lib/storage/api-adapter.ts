@@ -8,8 +8,12 @@ export class ApiStorageAdapter implements StorageAdapter {
         }
 
         const response = await fetch(url, { ...defaultOptions, ...options })
-        if (response.status === 401 && typeof window !== 'undefined') {
-            window.location.assign('/login')
+        if (response.status === 401) {
+            // Send signed-out users to the login page, but never from the login
+            // page itself (that would reload it in a loop).
+            if (typeof window !== 'undefined' && !/^\/(login|auth)/.test(window.location.pathname)) {
+                window.location.assign('/login')
+            }
             throw new Error('Your session has expired. Please sign in again.')
         }
         const text = await response.text()
