@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import prisma from '@/lib/db';
 import { getUserId, unauthorized } from '@/lib/auth';
+import { removeAllForUser } from '@/lib/screenshots';
 
 // Wipes the signed-in user's trades, strategies and accounts only.
 export async function POST() {
@@ -11,6 +12,7 @@ export async function POST() {
         await prisma.trade.deleteMany({ where: { userId } });
         await prisma.strategy.deleteMany({ where: { userId } });
         await prisma.account.deleteMany({ where: { userId } });
+        await removeAllForUser(userId).catch(err => console.error('Screenshot cleanup failed:', err));
         return NextResponse.json({ success: true, message: 'Your data was wiped successfully' });
     } catch (err: any) {
         console.error('Failed to clear database:', err);

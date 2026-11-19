@@ -4,6 +4,8 @@ export const runtime = 'nodejs'
 import { NextResponse } from 'next/server';
 import prisma from '@/lib/db';
 import { getUserId, unauthorized } from '@/lib/auth';
+import { formatTrades, loadFormattedTrade, tradeInclude } from '@/lib/format-trade';
+import { syncTradeScreenshots, removeObjects } from '@/lib/screenshots';
 
 // Fields a client may never set directly on a row.
 function stripProtected(body: any) {
@@ -51,22 +53,10 @@ export async function GET(request: Request) {
         if (type === 'trades') {
             const trades = await prisma.trade.findMany({
                 where: { userId },
-                include: { screenshots: true, strategy: { select: { name: true } } },
+                include: tradeInclude,
                 orderBy: { entryTime: 'desc' }
             });
-
-            // Format trades to match legacy API interface (the client expects
-            // `strategy` to be the strategy's name).
-            const formatted = trades.map(t => ({
-                ...t,
-                strategy: t.strategy?.name ?? '',
-                tags: t.tags ? JSON.parse(t.tags) : [],
-                confluences: t.confluences ? JSON.parse(t.confluences) : [],
-                mistakes: t.mistakes ? JSON.parse(t.mistakes) : [],
-                emotionTags: t.emotionTags ? JSON.parse(t.emotionTags) : [],
-                mistakeTags: t.mistakeTags ? JSON.parse(t.mistakeTags) : [],
-                screenshots: t.screenshots.map(s => s.path)
-            }));
+            const formatted = await formatTrades(trades);
             return NextResponse.json(formatted);
         } else if (type === 'strategies') {
             const strategies = await prisma.strategy.findMany({ where: { userId } });
@@ -150,7 +140,8 @@ export async function POST(request: Request) {
                     userId,
                 }
             });
-            return NextResponse.json(trade);
+            await syncTradeScreenshots(userId, trade.id, body.screenshots);
+            return NextResponse.json(await loadFormattedTrade(trade.id));
         } else if (type === 'strategies') {
             const strategy = await prisma.strategy.create({
                 data: {
@@ -245,7 +236,8 @@ export async function PUT(request: Request) {
                     strategyId: strategyId !== undefined ? strategyId : undefined,
                 }
             });
-            return NextResponse.json(trade);
+            await syncTradeScreenshots(userId, trade.id, body.screenshots);
+            return NextResponse.json(await loadFormattedTrade(trade.id));
         } else if (type === 'strategies') {
             if (!(await ownsStrategy(userId, id))) return NextResponse.json({ error: 'Strategy not found' }, { status: 404 });
             const strategy = await prisma.strategy.update({
@@ -292,8 +284,10 @@ export async function DELETE(request: Request) {
 
     try {
         if (type === 'trades') {
+            const shots = await prisma.tradeScreenshot.findMany({ where: { tradeId: id, trade: { userId } }, select: { path: true } });
             const { count } = await prisma.trade.deleteMany({ where: { id, userId } });
             if (!count) return NextResponse.json({ error: 'Trade not found' }, { status: 404 });
+            await removeObjects(shots.map(s => s.path));
             return NextResponse.json({ success: true });
         } else if (type === 'strategies') {
             if (!(await ownsStrategy(userId, id))) return NextResponse.json({ error: 'Strategy not found' }, { status: 404 });

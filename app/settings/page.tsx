@@ -1,6 +1,7 @@
 "use client"
 
-import React, { useRef, useState, useEffect } from "react"
+import React, { useRef, useState, useEffect, Suspense } from "react"
+import { ProfileSettings } from "@/components/settings/profile-settings"
 import { DashboardLayout } from "@/components/dashboard/dashboard-layout"
 import { useDashboard, Trade } from "@/context/dashboard-context"
 import { getWinLossCounts, calculateWinRate } from "@/lib/trading-metrics"
@@ -29,12 +30,14 @@ import { Page, PageHeader, Panel, PanelHeader, PanelBody } from "@/components/ki
 import { cn } from "@/lib/utils"
 import { Button } from "@/components/ui/button"
 import { useCurrentUser } from "@/hooks/use-current-user"
+import { isDataUrl, uploadScreenshots, urlToDataUrl, toJpegDataUrl } from "@/lib/screenshot-upload"
 
 export default function SettingsPage() {
     const currentUser = useCurrentUser()
     const { trades, accounts, strategies, addTrade, addAccount, addStrategy, refreshMetrics, addNotification } = useDashboard()
     const fileInputRef = useRef<HTMLInputElement>(null)
     const [importing, setImporting] = useState(false)
+    const [importStatus, setImportStatus] = useState<string | null>(null)
     const [exporting, setExporting] = useState<'json' | 'pdf' | null>(null)
     const [importResult, setImportResult] = useState<{ success: number; errors: string[] } | null>(null)
 
@@ -171,18 +174,25 @@ export default function SettingsPage() {
                 strategiesRes.json(),
                 accountsRes.json(),
             ])
+            // Embed screenshots (signed URLs expire) so the backup is self-contained.
+            const tradesWithImages = []
+            for (const t of fullTrades as any[]) {
+                const shots: string[] = Array.isArray(t.screenshots) ? t.screenshots : []
+                const embedded = (await Promise.all(shots.map(urlToDataUrl))).filter((x): x is string => !!x)
+                tradesWithImages.push({ ...t, screenshots: embedded })
+            }
             const exportData = {
                 exportedAt: new Date().toISOString(),
-                version: "1.0",
+                version: "1.1",
                 accounts: fullAccounts,
                 strategies: fullStrategies,
-                trades: fullTrades,
+                trades: tradesWithImages,
             }
             const blob = new Blob([JSON.stringify(exportData, null, 2)], { type: "application/json" })
             const url = URL.createObjectURL(blob)
             const a = document.createElement("a")
             a.href = url
-            a.download = `yafu_export_${new Date().toISOString().split("T")[0]}.json`
+            a.download = `yafi_export_${new Date().toISOString().split("T")[0]}.json`
             a.click()
             URL.revokeObjectURL(url)
             addNotification({ title: 'Export Successful', message: `Exported ${fullTrades.length} trades`, type: 'success' })
@@ -210,10 +220,30 @@ export default function SettingsPage() {
                 throw new Error('Invalid import file format')
             }
 
-            // Screenshots are not restored by the importer and make exports huge
-            // (base64 images). Strip them and send in batches so each request
-            // stays under Vercel's 4.5 MB serverless body limit.
-            const trades: any[] = (parsed.trades || []).map(({ screenshots, ...t }: any) => t)
+            // Embedded screenshots (base64) are uploaded straight to storage from
+            // the browser and replaced with their storage paths, so each request
+            // to our API stays far below Vercel's 4.5 MB body limit.
+            const sourceTrades: any[] = parsed.trades || []
+            const totalShots = sourceTrades.reduce((n, t) => n + (Array.isArray(t.screenshots) ? t.screenshots.filter(isDataUrl).length : 0), 0)
+            let doneShots = 0
+            const shotErrors: string[] = []
+            const trades: any[] = []
+            for (const t of sourceTrades) {
+                const embedded: string[] = Array.isArray(t.screenshots) ? t.screenshots.filter(isDataUrl) : []
+                let paths: string[] = []
+                if (embedded.length) {
+                    setImportStatus(`Uploading screenshots ${doneShots + 1}–${doneShots + embedded.length} of ${totalShots}…`)
+                    try {
+                        paths = await uploadScreenshots(embedded.map((dataUrl) => ({ kind: "img" as const, dataUrl })))
+                    } catch (err: any) {
+                        shotErrors.push(`Screenshots for ${t.symbol || "a trade"}: ${err?.message || "upload failed"}`)
+                    }
+                    doneShots += embedded.length
+                }
+                const { screenshots, ...rest } = t
+                trades.push(paths.length ? { ...rest, screenshots: paths } : rest)
+            }
+            setImportStatus("Saving trades…")
             const batches: any[] = [{ accounts: parsed.accounts || [], strategies: parsed.strategies || [] }]
             const BATCH_SIZE = 50
             for (let i = 0; i < trades.length; i += BATCH_SIZE) {
@@ -221,7 +251,7 @@ export default function SettingsPage() {
             }
 
             let saved = 0
-            const errors: string[] = []
+            const errors: string[] = [...shotErrors]
             for (const batch of batches) {
                 if (!batch.trades?.length && !batch.accounts?.length && !batch.strategies?.length) continue
                 const res = await fetch('/api/db/import', {
@@ -251,6 +281,7 @@ export default function SettingsPage() {
             setImportResult({ success: 0, errors: [err.message || "Failed to import file"] })
         } finally {
             setImporting(false)
+            setImportStatus(null)
             if (fileInputRef.current) fileInputRef.current.value = ""
         }
     }
@@ -260,6 +291,14 @@ export default function SettingsPage() {
         try {
             const tradesRes = await fetch('/api/db?type=trades&full=true')
             const pdfTrades: Trade[] = await tradesRes.json()
+
+            // jsPDF only embeds PNG/JPEG data, so convert stored screenshots first.
+            const pdfImages = new Map<string, string[]>()
+            for (const t of pdfTrades) {
+                if (!t.screenshots?.length) continue
+                const imgs = (await Promise.all(t.screenshots.map((src) => toJpegDataUrl(src)))).filter((x): x is string => !!x)
+                pdfImages.set(t.id, imgs)
+            }
 
             const doc = new jsPDF()
             const { wins, losses } = getWinLossCounts(pdfTrades)
@@ -376,17 +415,12 @@ export default function SettingsPage() {
 
                 yPos += baseCardHeight + notesSectionHeight + 10
 
-                if (t.screenshots && t.screenshots.length > 0) {
-                    t.screenshots.forEach((imgBase64) => {
-                        if (yPos > 220) { doc.addPage(); yPos = 20; }
-                        try {
-                            if (imgBase64.startsWith('data:image')) {
-                                const format = imgBase64.toLowerCase().includes('png') ? 'PNG' : 'JPEG'
-                                doc.addImage(imgBase64, format, 22, yPos, 163, 60, undefined, 'FAST')
-                                yPos += 65
-                            }
-                        } catch (e) { console.error("Could not add image to PDF", e) }
-                    })
+                for (const img of pdfImages.get(t.id) || []) {
+                    if (yPos > 220) { doc.addPage(); yPos = 20; }
+                    try {
+                        doc.addImage(img, 'JPEG', 22, yPos, 163, 60, undefined, 'FAST')
+                        yPos += 65
+                    } catch (e) { console.error("Could not add image to PDF", e) }
                 }
                 yPos += 10
             })
@@ -422,21 +456,13 @@ export default function SettingsPage() {
     return (
         <DashboardLayout>
             <Page className="max-w-4xl md:mx-0">
-                <PageHeader title="Settings" description="Your account, broker connection and data" />
+                <PageHeader title="Settings" description="Your profile, broker connection and data" />
 
                 <div className="space-y-4 md:space-y-6">
-                    {/* Account */}
-                    <Panel>
-                        <PanelHeader title="Account" description="Your sign-in details" icon={User} />
-                        <PanelBody className="divide-y divide-border">
-                            <Row title="Email">
-                                <span className="font-mono text-sm text-muted-foreground">{currentUser?.email ?? "…"}</span>
-                            </Row>
-                            <Row title="Role">
-                                <span className="text-sm text-muted-foreground">Forex trader</span>
-                            </Row>
-                        </PanelBody>
-                    </Panel>
+                    {/* Profile: name, email, password */}
+                    <Suspense fallback={null}>
+                        <ProfileSettings />
+                    </Suspense>
 
                     {/* Preferences */}
                     <Panel>
@@ -547,7 +573,7 @@ export default function SettingsPage() {
                                     {exporting === 'json' ? 'Exporting…' : 'Export JSON'}
                                 </Button>
                             </Row>
-                            <Row title="Import data" description="Restore accounts, strategies and trades from a YAFI JSON export. Existing items are updated, not duplicated.">
+                            <Row title="Import data" description={importStatus ?? "Restore accounts, strategies, trades and screenshots from a YAFI JSON export. Existing items are updated, not duplicated."}>
                                 <Button variant="outline" onClick={() => fileInputRef.current?.click()} disabled={importing}>
                                     {importing ? <Loader2 className="animate-spin" /> : <Upload />}
                                     {importing ? "Importing…" : "Import JSON"}

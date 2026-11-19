@@ -9,6 +9,7 @@ import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { X, Upload, AlertTriangle } from "@/components/icons"
 import { cn } from "@/lib/utils"
+import { resolveScreenshotList, screenshotKind } from "@/lib/screenshot-upload"
 
 // Native selects/textareas kept (optgroups, required validation) but styled to match ui/input.
 const selectCls =
@@ -184,11 +185,23 @@ export function TradeEntryForm({ onClose, initialTrade, defaultEntryTime }: Trad
   useEffect(() => {
     if (initialTrade?.screenshots) {
       const all = initialTrade.screenshots
-      setScreenshots({
-        htf: all.length > 0 ? [all[0]] : [],
-        entry: all.length > 1 ? [all[1]] : [],
-        exit: all.length > 2 ? [all[2]] : [],
-      })
+      // Stored files carry their slot in the name (htf-/entry-/exit-); older
+      // ones fall back to position (htf, entry, exit).
+      if (all.some((s) => screenshotKind(s))) {
+        const next = { htf: [] as string[], entry: [] as string[], exit: [] as string[] }
+        all.forEach((s, i) => {
+          const k = screenshotKind(s)
+          const slot = k === "htf" || k === "entry" || k === "exit" ? k : (["htf", "entry", "exit"] as const)[Math.min(i, 2)]
+          next[slot].push(s)
+        })
+        setScreenshots(next)
+      } else {
+        setScreenshots({
+          htf: all.length > 0 ? [all[0]] : [],
+          entry: all.length > 1 ? [all[1]] : [],
+          exit: all.length > 2 ? all.slice(2) : [],
+        })
+      }
     }
   }, [initialTrade?.id])
 
@@ -462,7 +475,9 @@ export function TradeEntryForm({ onClose, initialTrade, defaultEntryTime }: Trad
     return null
   }, [formData.tradeStatus, formData.exitPrice])
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const [uploadingShots, setUploadingShots] = useState(false)
+
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     setValidationError(null)
 
@@ -525,8 +540,21 @@ export function TradeEntryForm({ onClose, initialTrade, defaultEntryTime }: Trad
       riskToReward = risk > 0 ? reward / risk : 0
     }
 
-    // Collect all screenshots into a flat array for storage
-    const allShots = [...screenshots.htf, ...screenshots.entry, ...screenshots.exit]
+    // Upload any new images to storage first; existing ones are kept as-is.
+    let allShots: string[] = []
+    try {
+      setUploadingShots(true)
+      allShots = await resolveScreenshotList([
+        ...screenshots.htf.map((value) => ({ kind: "htf" as const, value })),
+        ...screenshots.entry.map((value) => ({ kind: "entry" as const, value })),
+        ...screenshots.exit.map((value) => ({ kind: "exit" as const, value })),
+      ])
+    } catch (err: any) {
+      setValidationError(err?.message || "Could not upload screenshots. Please try again.")
+      return
+    } finally {
+      setUploadingShots(false)
+    }
 
     const tradeData: Omit<Trade, "id"> = {
       ...formData,
@@ -541,7 +569,8 @@ export function TradeEntryForm({ onClose, initialTrade, defaultEntryTime }: Trad
       riskToReward: riskToReward > 0 ? riskToReward : undefined,
       entryTime: new Date(formData.entryTime).toISOString(),
       exitTime: formData.exitTime ? new Date(formData.exitTime).toISOString() : undefined,
-      screenshots: allShots.length > 0 ? allShots : undefined,
+      // On edits always send the list so removing every screenshot works.
+      screenshots: allShots.length > 0 || initialTrade ? allShots : undefined,
 
       confluences: setupValidationKeys.filter(k => (formData as any)[k.key]).map(k => k.label),
       emotionalState: formData.emotionalState || undefined,
@@ -1363,8 +1392,8 @@ export function TradeEntryForm({ onClose, initialTrade, defaultEntryTime }: Trad
           {/* Actions */}
           <div className="flex gap-3 border-t border-border pt-4">
             <Button type="button" variant="outline" onClick={onClose}>Cancel</Button>
-            <Button type="submit" className="flex-1" disabled={isLoading}>
-              {isLoading ? "Saving..." : (initialTrade ? "Update Trade" : "Record Trade")}
+            <Button type="submit" className="flex-1" disabled={isLoading || uploadingShots}>
+              {uploadingShots ? "Uploading screenshots..." : isLoading ? "Saving..." : (initialTrade ? "Update Trade" : "Record Trade")}
             </Button>
           </div>
 

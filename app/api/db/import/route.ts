@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import prisma from '@/lib/db';
 import { getUserId, unauthorized } from '@/lib/auth';
+import { syncTradeScreenshots } from '@/lib/screenshots';
 
 const jsonArr = (v: any) => (v ? JSON.stringify(v) : null);
 
@@ -147,10 +148,12 @@ export async function POST(request: Request) {
                         mistakeTags: jsonArr(trade.mistakeTags),
                     };
 
-                    if (existing) {
-                        await prisma.trade.update({ where: { id: trade.id }, data: fields });
-                    } else {
-                        await prisma.trade.create({ data: { ...fields, id: trade.id || undefined, userId } });
+                    const savedTrade = existing
+                        ? await prisma.trade.update({ where: { id: trade.id }, data: fields })
+                        : await prisma.trade.create({ data: { ...fields, id: trade.id || undefined, userId } });
+                    // The client uploads embedded images first and sends storage paths here.
+                    if (Array.isArray(trade.screenshots) && trade.screenshots.length) {
+                        await syncTradeScreenshots(userId, savedTrade.id, trade.screenshots);
                     }
                     saved++;
                 } catch (err: any) {

@@ -64,7 +64,8 @@ export async function updateSession(request: NextRequest) {
   }
   
   // Redirect to dashboard if logged in and on login page
-  if (isAuthRoute && user) {
+  // Signed-in users still need /auth/callback (e.g. confirming an email change).
+  if (isAuthRoute && user && !request.nextUrl.pathname.startsWith('/auth/callback')) {
     const url = request.nextUrl.clone()
     url.pathname = '/'
     return NextResponse.redirect(url)
