@@ -13,34 +13,67 @@ export const SCREENSHOT_BUCKET = 'trade-screenshots'
 const SIGNED_URL_TTL = 60 * 60 * 24 // 24h
 const SIGN_MARKER = `/storage/v1/object/sign/${SCREENSHOT_BUCKET}/`
 
-let admin: SupabaseClient | null = null
-function adminClient(): SupabaseClient {
-  if (admin) return admin
-  const url = process.env.NEXT_PUBLIC_SUPABASE_URL
-  const key = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.SUPABASE_SECRET_KEY
-  if (!url || !key) throw new Error('Screenshot storage is not configured (missing Supabase service key)')
-  admin = createClient(url, key, { auth: { persistSession: false, autoRefreshToken: false } })
-  return admin
+// Projects migrated to Supabase's new API keys reject the legacy service_role
+// JWT ("signature verification failed"), so try each configured server key and
+// keep the first one Storage accepts.
+function candidateKeys(): string[] {
+  return [process.env.SUPABASE_SECRET_KEY, process.env.SUPABASE_SERVICE_ROLE_KEY].filter(
+    (k, i, all): k is string => !!k && all.indexOf(k) === i
+  )
 }
 
-let bucketReady: Promise<void> | null = null
-/** Creates the private bucket on first use (idempotent). */
-export function ensureBucket(): Promise<void> {
-  bucketReady ??= (async () => {
-    const sb = adminClient()
-    const { data } = await sb.storage.getBucket(SCREENSHOT_BUCKET)
-    if (data) return
-    const { error } = await sb.storage.createBucket(SCREENSHOT_BUCKET, {
-      public: false,
-      fileSizeLimit: 10 * 1024 * 1024,
-      allowedMimeTypes: ['image/png', 'image/jpeg', 'image/webp', 'image/gif'],
-    })
-    if (error && !/already exists/i.test(error.message)) throw error
+function makeClient(key: string): SupabaseClient {
+  const url = process.env.NEXT_PUBLIC_SUPABASE_URL
+  if (!url) throw new Error('Screenshot storage is not configured (missing Supabase URL)')
+  return createClient(url, key, { auth: { persistSession: false, autoRefreshToken: false } })
+}
+
+let admin: SupabaseClient | null = null
+let adminReady: Promise<SupabaseClient> | null = null
+
+/** Resolves a working admin client and makes sure the private bucket exists. */
+function ready(): Promise<SupabaseClient> {
+  adminReady ??= (async () => {
+    const keys = candidateKeys()
+    if (!keys.length) throw new Error('Screenshot storage is not configured (missing Supabase secret key)')
+    let lastError: unknown = null
+    for (const key of keys) {
+      const sb = makeClient(key)
+      const { data, error } = await sb.storage.getBucket(SCREENSHOT_BUCKET)
+      if (data) {
+        admin = sb
+        return sb
+      }
+      // "not found" means the key works but the bucket doesn't exist yet.
+      if (error && /not.?found/i.test(error.message)) {
+        const created = await sb.storage.createBucket(SCREENSHOT_BUCKET, {
+          public: false,
+          fileSizeLimit: 10 * 1024 * 1024,
+          allowedMimeTypes: ['image/png', 'image/jpeg', 'image/webp', 'image/gif'],
+        })
+        if (!created.error || /already exists/i.test(created.error.message)) {
+          admin = sb
+          return sb
+        }
+        lastError = created.error
+        continue
+      }
+      lastError = error
+    }
+    throw lastError instanceof Error ? lastError : new Error(String((lastError as any)?.message || lastError))
   })().catch((err) => {
-    bucketReady = null // retry next time
+    adminReady = null // retry on the next request
     throw err
   })
-  return bucketReady
+  return adminReady
+}
+
+export async function ensureBucket(): Promise<void> {
+  await ready()
+}
+
+async function adminClient(): Promise<SupabaseClient> {
+  return admin ?? ready()
 }
 
 const EXT: Record<string, string> = { 'image/png': 'png', 'image/jpeg': 'jpg', 'image/webp': 'webp', 'image/gif': 'gif' }
@@ -48,8 +81,7 @@ const KINDS = new Set(['htf', 'entry', 'exit', 'img'])
 
 /** Issues one-time upload URLs for new files in the user's own folder. */
 export async function createUploadTargets(userId: string, files: { kind?: string; contentType?: string }[]) {
-  await ensureBucket()
-  const sb = adminClient()
+  const sb = await adminClient()
   return Promise.all(
     files.map(async (f) => {
       const ext = EXT[f.contentType || ''] || 'webp'
@@ -83,7 +115,7 @@ export async function signScreenshotPaths(paths: string[]): Promise<Map<string, 
   const storagePaths = [...new Set(paths.filter((p) => /^[0-9a-f-]{36}\//i.test(p)))]
   if (!storagePaths.length) return out
   try {
-    const { data, error } = await adminClient()
+    const { data, error } = await (await adminClient())
       .storage.from(SCREENSHOT_BUCKET)
       .createSignedUrls(storagePaths, SIGNED_URL_TTL)
     if (error) throw error
@@ -97,13 +129,13 @@ export async function signScreenshotPaths(paths: string[]): Promise<Map<string, 
 export async function removeObjects(paths: string[]) {
   const storagePaths = paths.filter((p) => /^[0-9a-f-]{36}\//i.test(p))
   if (!storagePaths.length) return
-  const { error } = await adminClient().storage.from(SCREENSHOT_BUCKET).remove(storagePaths)
+  const { error } = await (await adminClient()).storage.from(SCREENSHOT_BUCKET).remove(storagePaths)
   if (error) console.error('Removing screenshots failed:', error)
 }
 
 /** Removes every object in the user's folder (used when wiping their data). */
 export async function removeAllForUser(userId: string) {
-  const sb = adminClient()
+  const sb = await adminClient()
   for (;;) {
     const { data, error } = await sb.storage.from(SCREENSHOT_BUCKET).list(userId, { limit: 1000 })
     if (error || !data?.length) return
