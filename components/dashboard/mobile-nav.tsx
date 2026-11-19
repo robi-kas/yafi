@@ -11,9 +11,17 @@ export const NEW_TRADE_EVENT = "yafi:new-trade"
 const tabs = [
   { href: "/", label: "Home", icon: DashboardIcon },
   { href: "/journal", label: "Trades", icon: BookOpen },
-  null, // center action
   { href: "/analytics", label: "Analytics", icon: AnalyticsIcon },
 ] as const
+
+// Floating dark pill with icon-only tabs and a round "+" button fused to its
+// right end. The pill and circle are drawn in a background layer merged by an
+// SVG "goo" filter, which produces the liquid neck between them; the icons sit
+// on top, unfiltered.
+const PILL_COLOR = "#1a1a1f"
+const BAR_H = 60 // px, pill height
+const FAB = 60 // px, circle diameter
+const GAP = 3 // px between pill end and ring (bridged by the goo filter)
 
 export function MobileNav({ onMore }: { onMore: () => void }) {
   const pathname = usePathname()
@@ -26,45 +34,76 @@ export function MobileNav({ onMore }: { onMore: () => void }) {
     else router.push("/journal?new=1")
   }
 
-  const item = "relative flex flex-1 flex-col items-center justify-center gap-1 py-2 text-[11px] font-medium transition-colors"
+  const tabCls = "relative flex h-full flex-1 items-center justify-center transition-colors"
 
   return (
     <nav
       aria-label="Primary"
-      className="fixed inset-x-0 bottom-0 z-40 px-3 pb-[max(env(safe-area-inset-bottom),0.75rem)] lg:hidden"
+      className="pointer-events-none fixed inset-x-0 bottom-0 z-40 flex justify-center px-4 pb-[max(env(safe-area-inset-bottom),0.9rem)] lg:hidden"
     >
-      <div className="relative mx-auto flex h-16 max-w-md items-stretch rounded-2xl border border-border bg-card/85 px-1 shadow-[0_8px_30px_rgba(0,0,0,0.35)] backdrop-blur-xl">
-        {tabs.map((tab, i) =>
-          tab === null ? (
-            <div key="action" className="flex flex-1 items-start justify-center">
-              <button
-                type="button"
-                onClick={logTrade}
-                aria-label="Log a trade"
-                className="group -mt-6 flex size-14 items-center justify-center rounded-2xl bg-brand text-primary-foreground shadow-[0_8px_24px_-4px_var(--lime-glow)] ring-4 ring-background transition-transform active:scale-95"
-              >
-                <Plus className="size-6 transition-transform group-active:rotate-90" strokeWidth={2.25} />
-              </button>
-            </div>
-          ) : (
-            <Link
-              key={tab.href}
-              href={tab.href}
-              aria-current={isActive(tab.href) ? "page" : undefined}
-              className={cn(item, isActive(tab.href) ? "text-brand" : "text-muted-foreground active:text-foreground")}
-            >
-              {isActive(tab.href) && (
-                <span className="absolute top-1 h-1 w-1 rounded-full bg-brand shadow-[0_0_8px_var(--lime-glow)]" />
-              )}
-              <tab.icon className="size-[22px]" strokeWidth={isActive(tab.href) ? 2.1 : 1.75} />
-              {tab.label}
-            </Link>
-          )
-        )}
-        <button type="button" onClick={onMore} className={cn(item, "text-muted-foreground active:text-foreground")}>
-          <Menu className="size-[22px]" />
-          More
-        </button>
+      {/* SVG filter that fuses overlapping shapes into one smooth blob */}
+      <svg width="0" height="0" className="absolute" aria-hidden="true">
+        <defs>
+          <filter id="yafi-goo">
+            <feGaussianBlur in="SourceGraphic" stdDeviation="5" result="blur" />
+            <feColorMatrix in="blur" mode="matrix" values="1 0 0 0 0  0 1 0 0 0  0 0 1 0 0  0 0 0 22 -10" result="goo" />
+            <feComposite in="SourceGraphic" in2="goo" operator="atop" />
+          </filter>
+        </defs>
+      </svg>
+
+      <div className="pointer-events-auto relative w-full max-w-sm" style={{ height: FAB + 8 }}>
+        {/* Background shapes (filtered) */}
+        <div className="absolute inset-0 drop-shadow-[0_12px_28px_rgba(0,0,0,0.35)]" aria-hidden="true">
+          <div className="absolute inset-0" style={{ filter: "url(#yafi-goo)" }}>
+            {/* pill ends just before the ring; the goo filter grows a narrow neck between them */}
+            <div
+              className="absolute left-0 rounded-full"
+              style={{ top: (FAB + 8 - BAR_H) / 2, height: BAR_H, right: FAB + 8 + GAP, background: PILL_COLOR }}
+            />
+            {/* ring around the + button, same colour as the pill */}
+            <div className="absolute right-0 top-0 rounded-full" style={{ width: FAB + 8, height: FAB + 8, background: PILL_COLOR }} />
+          </div>
+        </div>
+
+        {/* Foreground: icons and + button */}
+        <div className="relative flex h-full items-center">
+          <div className="flex items-center pl-2" style={{ height: BAR_H, width: `calc(100% - ${FAB + 8 + GAP}px)` }}>
+            {tabs.map((tab) => {
+              const active = isActive(tab.href)
+              return (
+                <Link
+                  key={tab.href}
+                  href={tab.href}
+                  aria-label={tab.label}
+                  aria-current={active ? "page" : undefined}
+                  className={cn(tabCls, active ? "text-brand" : "text-zinc-400 active:text-zinc-100")}
+                >
+                  <tab.icon className="size-6" strokeWidth={active ? 2.2 : 1.6} />
+                  <span
+                    className={cn(
+                      "absolute bottom-[9px] size-1 rounded-full bg-brand transition-all duration-200",
+                      active ? "scale-100 opacity-100 shadow-[0_0_6px_var(--lime-glow)]" : "scale-0 opacity-0"
+                    )}
+                  />
+                </Link>
+              )
+            })}
+            <button type="button" onClick={onMore} aria-label="More" className={cn(tabCls, "text-zinc-400 active:text-zinc-100")}>
+              <Menu className="size-6" strokeWidth={1.6} />
+            </button>
+          </div>
+
+          <button
+            type="button"
+            onClick={logTrade}
+            aria-label="Log a trade"
+            className="group absolute right-1 top-1 flex items-center justify-center rounded-full bg-brand text-primary-foreground shadow-[0_6px_20px_-4px_var(--lime-glow)] transition-transform active:scale-90"
+            style={{ width: FAB, height: FAB }}
+          >
+            <Plus className="size-7 transition-transform duration-200 group-active:rotate-90" strokeWidth={2.2} />
+          </button>
+        </div>
       </div>
     </nav>
   )

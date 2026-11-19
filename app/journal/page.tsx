@@ -194,7 +194,7 @@ export default function TradeJournal() {
 
   const filteredTrades = trades.filter(trade => {
     const symbol = (trade.symbol || "").toLowerCase()
-    if (symbol && !symbol.includes(searchSymbol.toLowerCase())) return false
+    if (searchSymbol.trim() && !symbol.includes(searchSymbol.trim().toLowerCase())) return false
 
     if (filterSession !== "all") {
       const session = trade.session || "UNKNOWN"

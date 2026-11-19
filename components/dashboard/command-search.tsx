@@ -52,6 +52,15 @@ interface CommandSearchProps {
   onOpenChange: (open: boolean) => void
 }
 
+// Plain word matching: every typed word must appear in the item's text.
+// (cmdk's default fuzzy matching made "xau" match "Export / back up".)
+function matchWords(value: string, search: string, keywords?: string[]) {
+  const hay = `${value} ${(keywords || []).join(" ")}`.toLowerCase()
+  const words = search.toLowerCase().trim().split(/\s+/).filter(Boolean)
+  if (!words.length) return 1
+  return words.every((w) => hay.includes(w)) ? 1 : 0
+}
+
 export function CommandSearch({ open, onOpenChange }: CommandSearchProps) {
   const router = useRouter()
   const { trades } = useDashboard()
@@ -65,13 +74,13 @@ export function CommandSearch({ open, onOpenChange }: CommandSearchProps) {
   )
 
   return (
-    <CommandDialog open={open} onOpenChange={onOpenChange}>
+    <CommandDialog open={open} onOpenChange={onOpenChange} filter={matchWords}>
       <CommandInput placeholder="Search pages, actions or trades by symbol..." />
       <CommandList>
         <CommandEmpty>No results found.</CommandEmpty>
         <CommandGroup heading="Pages">
           {pages.map((page) => (
-            <CommandItem key={page.href} value={`page ${page.name}`} onSelect={() => go(page.href)} className="flex cursor-pointer items-center gap-3">
+            <CommandItem key={page.href} value={`go ${page.name}`} onSelect={() => go(page.href)} className="flex cursor-pointer items-center gap-3">
               <page.icon className="size-4 text-muted-foreground" />
               <span>{page.name}</span>
             </CommandItem>
@@ -80,7 +89,7 @@ export function CommandSearch({ open, onOpenChange }: CommandSearchProps) {
         <CommandSeparator />
         <CommandGroup heading="Actions">
           {quickActions.map((action) => (
-            <CommandItem key={action.name} value={`action ${action.name}`} onSelect={() => go(action.href)} className="flex cursor-pointer items-center gap-3">
+            <CommandItem key={action.name} value={action.name} onSelect={() => go(action.href)} className="flex cursor-pointer items-center gap-3">
               <action.icon className="size-4 text-muted-foreground" />
               <span>{action.name}</span>
             </CommandItem>
@@ -95,7 +104,7 @@ export function CommandSearch({ open, onOpenChange }: CommandSearchProps) {
                 return (
                   <CommandItem
                     key={t.id}
-                    value={`trade ${t.symbol} ${t.direction} ${new Date(t.entryTime).toLocaleDateString()} ${t.id}`}
+                    value={`${t.symbol} ${t.direction} ${t.strategy || ""} ${new Date(t.entryTime).toLocaleDateString()} ${new Date(t.entryTime).toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric" })} #${t.id}`}
                     onSelect={() => go("/journal")}
                     className="flex cursor-pointer items-center gap-3"
                   >
