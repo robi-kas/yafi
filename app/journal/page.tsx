@@ -14,6 +14,8 @@ import { getWinLossCounts, calcResult as sharedCalcResult, calculateWinRate } fr
 import { Page, PageHeader, Panel, StatCard, EmptyState, ResultBadge, DirectionBadge, formatMoney, pnlTone } from "@/components/kit"
 import { cn } from "@/lib/utils"
 import { NEW_TRADE_EVENT } from "@/components/dashboard/mobile-nav"
+import { rMultiple } from "@/lib/instruments"
+import { format } from "date-fns"
 
 const MODEL_ABBR: Record<string, string> = {
   "Breaker Block": "BB",
@@ -109,6 +111,11 @@ function calcNetRR(trade: any): number | null {
 }
 
 function getRRDisplay(trade: any): string {
+  const shared = rMultiple(trade)
+  if (shared != null && shared !== 0) {
+    if (Math.abs(shared) > 50) return "⚠ " + shared.toFixed(1) + "R"
+    return shared.toFixed(1) + "R"
+  }
   const netR = calcNetRR(trade)
   if (netR == null) {
     const stored = trade.rrAchieved || trade.riskToReward
@@ -256,6 +263,68 @@ export default function TradeJournal() {
     window.addEventListener(NEW_TRADE_EVENT, open)
     return () => window.removeEventListener(NEW_TRADE_EVENT, open)
   }, [])
+
+
+  // Expanded details for a trade: shared by the table (tablet/desktop) and the cards (phone).
+  const renderDetails = (trade: any, mistakeList: string[], legacy: boolean) => (
+    legacy ? (
+      <p className="p-5 text-center text-xs text-muted-foreground">No enhanced journal data for this trade.</p>
+    ) : (
+      <div className="grid grid-cols-1 gap-5 p-5 md:grid-cols-2 lg:grid-cols-3">
+        {[
+          ["Notes", trade.notes || "None"],
+          ["Entry reason", trade.entryReason || "Not recorded"],
+          ["Exit reason", trade.exitReason || "Not recorded"],
+          ["Lesson learned", trade.lessonLearned || "Not recorded"],
+        ].map(([label, value]) => (
+          <div key={label}>
+            <p className="mb-1 text-xs font-medium text-muted-foreground">{label}</p>
+            <p className="whitespace-pre-wrap text-sm">{value}</p>
+          </div>
+        ))}
+        <div>
+          <p className="mb-1 text-xs font-medium text-muted-foreground">Tags</p>
+          {trade.tags && trade.tags.length > 0 ? (
+            <div className="flex flex-wrap gap-1">
+              {trade.tags.map((t: string, ti: number) => (
+                <span key={`tag-${ti}`} className="rounded-md bg-secondary px-1.5 py-0.5 text-[11px] text-muted-foreground">{t}</span>
+              ))}
+            </div>
+          ) : (
+            <p className="text-sm text-muted-foreground">None</p>
+          )}
+          {mistakeList.length > 0 && (
+            <>
+              <p className="mb-1 mt-3 text-xs font-medium text-muted-foreground">Mistakes</p>
+              <div className="flex flex-wrap gap-1">
+                {mistakeList.map((m: string, mi: number) => (
+                  <span key={`mistake-${mi}`} className="rounded-md bg-loss/10 px-1.5 py-0.5 text-[11px] text-loss">{m}</span>
+                ))}
+              </div>
+            </>
+          )}
+        </div>
+        <div>
+          <p className="mb-1 text-xs font-medium text-muted-foreground">Screenshots</p>
+          <div className="flex gap-2">
+            {trade.screenshots && trade.screenshots.length > 0 ? (
+              trade.screenshots.slice(0, 3).map((s: string, i: number) => (
+                <button
+                  key={i}
+                  onClick={() => setViewerImage(s)}
+                  className="h-12 w-16 overflow-hidden rounded-md border border-border transition-opacity hover:opacity-80"
+                >
+                  <img src={s} alt={`Screenshot ${i + 1}`} className="h-full w-full object-cover" />
+                </button>
+              ))
+            ) : (
+              <p className="text-sm text-muted-foreground">None</p>
+            )}
+          </div>
+        </div>
+      </div>
+    )
+  )
 
   const totalPL = filteredTrades.reduce((sum, t) => sum + (t.profitLoss || 0), 0)
   // Shared counter: only finished trades count (an open trade isn't a breakeven).
@@ -419,7 +488,75 @@ export default function TradeJournal() {
               <p className="text-sm text-muted-foreground">Loading trades…</p>
             </div>
           ) : filteredTrades.length > 0 ? (
-            <div className="overflow-x-auto">
+            <>
+            {/* Phone: one card per trade */}
+            <ul className="divide-y divide-border md:hidden">
+              {filteredTrades.map((trade) => {
+                const resultVal = trade.tradeStatus === "open" ? "" : calcResult(trade)
+                const mistakeList = allMistakeTags(trade)
+                const legacy = isLegacyTrade(trade)
+                const isExpanded = expandedRow === trade.id
+                const pl = trade.profitLoss || 0
+                const rr = getRRDisplay(trade)
+                return (
+                  <li key={trade.id}>
+                    <button
+                      type="button"
+                      onClick={() => setExpandedRow(isExpanded ? null : trade.id)}
+                      className={cn("flex w-full items-start gap-3 px-4 py-3 text-left transition-colors active:bg-accent/40", isExpanded && "bg-accent/30")}
+                      aria-expanded={isExpanded}
+                    >
+                      <div className="min-w-0 flex-1">
+                        <div className="flex flex-wrap items-center gap-1.5">
+                          <span className="font-semibold">{trade.symbol}</span>
+                          <DirectionBadge direction={trade.direction} />
+                          <ResultBadge result={resultVal} />
+                          {mistakeList.length > 0 && (
+                            <span className="rounded-md bg-loss/10 px-1.5 py-0.5 text-[11px] font-medium text-loss">
+                              {mistakeList.length} {mistakeList.length === 1 ? "mistake" : "mistakes"}
+                            </span>
+                          )}
+                        </div>
+                        <p className="mt-1 truncate text-xs text-muted-foreground">
+                          {format(new Date(trade.entryTime), "d MMM yyyy, HH:mm")}
+                          {trade.session ? ` · ${trade.session}` : ""}
+                          {trade.strategy ? ` · ${trade.strategy}` : ""}
+                        </p>
+                      </div>
+                      <div className="shrink-0 text-right">
+                        <p className={cn("font-mono text-sm font-semibold tabular", pl > 0 ? "text-profit" : pl < 0 ? "text-loss" : "")}>
+                          {formatMoney(pl, { sign: true })}
+                        </p>
+                        {rr !== "-" && <p className="font-mono text-xs text-muted-foreground tabular">{rr}</p>}
+                      </div>
+                    </button>
+                    {isExpanded && (
+                      <div className="border-t border-border bg-background/40">
+                        {renderDetails(trade, mistakeList, legacy)}
+                        <div className="flex gap-2 border-t border-border px-4 py-3">
+                          <Button variant="outline" size="sm" className="flex-1" onClick={() => handleEditTrade(trade.id)}>
+                            <Edit2 /> Edit
+                          </Button>
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            className="flex-1 text-loss hover:text-loss"
+                            onClick={() => { if (confirm("Delete this trade?")) deleteTrade(trade.id) }}
+                          >
+                            <Trash2 /> Delete
+                          </Button>
+                        </div>
+                      </div>
+                    )}
+                  </li>
+                )
+              })}
+            </ul>
+
+            {/* Tablet / desktop: full table. "relative" keeps absolutely
+                positioned children (e.g. sr-only labels) inside the scroll box
+                so they can't stretch the page. */}
+            <div className="relative hidden overflow-x-auto md:block">
               <table className="w-full text-sm">
                 <thead>
                   <tr className="border-b border-border text-left">
@@ -570,63 +707,7 @@ export default function TradeJournal() {
                         {isExpanded && (
                           <tr key={`${trade.id}-expanded`}>
                             <td colSpan={columnCount} className="border-b border-border bg-background/40">
-                              {legacy ? (
-                                <p className="p-5 text-center text-xs text-muted-foreground">No enhanced journal data for this trade.</p>
-                              ) : (
-                                <div className="grid grid-cols-1 gap-5 p-5 md:grid-cols-2 lg:grid-cols-3">
-                                  {[
-                                    ["Notes", trade.notes || "None"],
-                                    ["Entry reason", trade.entryReason || "Not recorded"],
-                                    ["Exit reason", trade.exitReason || "Not recorded"],
-                                    ["Lesson learned", trade.lessonLearned || "Not recorded"],
-                                  ].map(([label, value]) => (
-                                    <div key={label}>
-                                      <p className="mb-1 text-xs font-medium text-muted-foreground">{label}</p>
-                                      <p className="whitespace-pre-wrap text-sm">{value}</p>
-                                    </div>
-                                  ))}
-                                  <div>
-                                    <p className="mb-1 text-xs font-medium text-muted-foreground">Tags</p>
-                                    {trade.tags && trade.tags.length > 0 ? (
-                                      <div className="flex flex-wrap gap-1">
-                                        {trade.tags.map((t: string, ti: number) => (
-                                          <span key={`tag-${ti}`} className="rounded-md bg-secondary px-1.5 py-0.5 text-[11px] text-muted-foreground">{t}</span>
-                                        ))}
-                                      </div>
-                                    ) : (
-                                      <p className="text-sm text-muted-foreground">None</p>
-                                    )}
-                                    {mistakeList.length > 0 && (
-                                      <>
-                                        <p className="mb-1 mt-3 text-xs font-medium text-muted-foreground">Mistakes</p>
-                                        <div className="flex flex-wrap gap-1">
-                                          {mistakeList.map((m: string, mi: number) => (
-                                            <span key={`mistake-${mi}`} className="rounded-md bg-loss/10 px-1.5 py-0.5 text-[11px] text-loss">{m}</span>
-                                          ))}
-                                        </div>
-                                      </>
-                                    )}
-                                  </div>
-                                  <div>
-                                    <p className="mb-1 text-xs font-medium text-muted-foreground">Screenshots</p>
-                                    <div className="flex gap-2">
-                                      {trade.screenshots && trade.screenshots.length > 0 ? (
-                                        trade.screenshots.slice(0, 3).map((s: string, i: number) => (
-                                          <button
-                                            key={i}
-                                            onClick={() => setViewerImage(s)}
-                                            className="h-12 w-16 overflow-hidden rounded-md border border-border transition-opacity hover:opacity-80"
-                                          >
-                                            <img src={s} alt={`Screenshot ${i + 1}`} className="h-full w-full object-cover" />
-                                          </button>
-                                        ))
-                                      ) : (
-                                        <p className="text-sm text-muted-foreground">None</p>
-                                      )}
-                                    </div>
-                                  </div>
-                                </div>
-                              )}
+                              {renderDetails(trade, mistakeList, legacy)}
                             </td>
                           </tr>
                         )}
@@ -636,6 +717,7 @@ export default function TradeJournal() {
                 </tbody>
               </table>
             </div>
+            </>
           ) : trades.length === 0 ? (
             <EmptyState
               icon={BookOpen}

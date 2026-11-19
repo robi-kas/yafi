@@ -52,7 +52,7 @@ export function DashboardLayout({ children }: DashboardLayoutProps) {
         <CommandSearch open={open} onOpenChange={setOpen} />
 
         <main className={cn(
-          "pb-28 pt-14 transition-all duration-300 lg:pb-0 lg:pt-0",
+          "min-w-0 overflow-x-clip pb-28 pt-14 transition-all duration-300 lg:pb-0 lg:pt-0",
           sidebarCollapsed ? "lg:pl-[72px]" : "lg:pl-64"
         )}>
           <AnimatePresence mode="wait">

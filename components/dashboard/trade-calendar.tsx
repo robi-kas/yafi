@@ -184,7 +184,7 @@ export function TradeCalendar() {
                         onSelect={setSelectedDate}
                         month={currentMonth}
                         onMonthChange={setCurrentMonth}
-                        className="w-full min-w-[640px] p-0"
+                        className="w-full p-0 md:min-w-[640px]"
                         classNames={{
                             root: "w-full",
                             months: "w-full",
@@ -194,9 +194,9 @@ export function TradeCalendar() {
                             caption_label: "hidden",
                             month_grid: "w-full border-collapse",
                             weekdays: "grid grid-cols-7 border-b border-border bg-secondary/40",
-                            weekday: "py-2 text-center text-xs font-medium text-muted-foreground",
+                            weekday: "py-2 text-center text-[11px] font-medium text-muted-foreground md:text-xs",
                             week: "grid grid-cols-7 border-b border-border last:border-b-0",
-                            day: "relative min-h-[96px] w-full border-r border-border p-0 last:border-r-0 focus-within:z-20",
+                            day: "relative min-h-[58px] w-full min-w-0 border-r border-border p-0 last:border-r-0 focus-within:z-20 md:min-h-[96px]",
                             today: "bg-transparent",
                             selected: "bg-transparent",
                             outside: "",
@@ -221,7 +221,7 @@ export function TradeCalendar() {
                                             }
                                         }}
                                         className={cn(
-                                            "group relative flex h-full min-h-[96px] w-full cursor-pointer flex-col p-2 text-left transition-colors hover:bg-accent/50",
+                                            "group relative flex h-full min-h-[58px] w-full min-w-0 cursor-pointer flex-col p-1 text-left transition-colors hover:bg-accent/50 md:min-h-[96px] md:p-2",
                                             stats?.result === "win" && "bg-profit/10 hover:bg-profit/15",
                                             stats?.result === "loss" && "bg-loss/10 hover:bg-loss/15",
                                             isSelected && "ring-2 ring-inset ring-foreground/20",
@@ -231,18 +231,19 @@ export function TradeCalendar() {
                                         <div className="flex items-start justify-between">
                                             <span
                                                 className={cn(
-                                                    "flex h-6 min-w-6 items-center justify-center rounded-md px-1 text-xs font-medium tabular",
+                                                    "flex h-5 min-w-5 items-center justify-center rounded-md px-0.5 text-[11px] font-medium tabular md:h-6 md:min-w-6 md:px-1 md:text-xs",
                                                     isToday ? "bg-brand-soft text-brand ring-1 ring-brand" : "text-muted-foreground group-hover:text-foreground"
                                                 )}
                                             >
-                                                {day.date.getDate() === 1 ? format(day.date, "MMM d") : day.date.getDate()}
+                                                <span className="md:hidden">{day.date.getDate()}</span>
+                                                <span className="hidden md:inline">{day.date.getDate() === 1 ? format(day.date, "MMM d") : day.date.getDate()}</span>
                                             </span>
                                             <button
                                                 onClick={(e) => {
                                                     e.stopPropagation()
                                                     handleAddTradeForDate(day.date)
                                                 }}
-                                                className="rounded-md p-1 text-muted-foreground opacity-0 transition-opacity hover:bg-accent hover:text-foreground focus:opacity-100 group-hover:opacity-100"
+                                                className="hidden rounded-md p-1 text-muted-foreground opacity-0 transition-opacity hover:bg-accent hover:text-foreground focus:opacity-100 group-hover:opacity-100 md:block"
                                                 aria-label={`Log trade on ${format(day.date, "MMM d")}`}
                                                 title="Log trade"
                                             >
@@ -251,16 +252,25 @@ export function TradeCalendar() {
                                         </div>
 
                                         {stats && (
-                                            <div className="mt-auto pt-2">
+                                            <div className="mt-auto pt-1 md:pt-2">
+                                                {/* Phone: compact whole dollars (e.g. +$219) so 7 days fit */}
                                                 <div
                                                     className={cn(
-                                                        "font-mono text-sm font-semibold tabular",
+                                                        "truncate font-mono text-[10px] font-semibold tabular md:hidden",
+                                                        stats.netPL > 0.01 ? "text-profit" : stats.netPL < -0.01 ? "text-loss" : "text-muted-foreground"
+                                                    )}
+                                                >
+                                                    {stats.netPL > 0.01 ? "+" : stats.netPL < -0.01 ? "-" : ""}${Math.abs(stats.netPL) >= 1000 ? `${(Math.abs(stats.netPL) / 1000).toFixed(1)}k` : Math.round(Math.abs(stats.netPL))}
+                                                </div>
+                                                <div
+                                                    className={cn(
+                                                        "hidden font-mono text-sm font-semibold tabular md:block",
                                                         stats.netPL > 0.01 ? "text-profit" : stats.netPL < -0.01 ? "text-loss" : "text-muted-foreground"
                                                     )}
                                                 >
                                                     {formatMoney(stats.netPL, { sign: true })}
                                                 </div>
-                                                <div className="text-xs text-muted-foreground">
+                                                <div className="hidden text-xs text-muted-foreground md:block">
                                                     {stats.trades.length} {stats.trades.length === 1 ? "trade" : "trades"}
                                                 </div>
                                             </div>
