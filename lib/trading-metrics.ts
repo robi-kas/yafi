@@ -203,7 +203,7 @@ export function getWinLossCounts(trades: { profitLoss?: number | null; tradeStat
 
 export function calculateWinRate(wins: number, losses: number): number {
   const total = wins + losses
-  return total > 0 ? Math.round((wins / total) * 100) : 0
+  return total > 0 ? Math.round((wins / total) * 1000) / 10 : 0 // one decimal, e.g. 42.9
 }
 
 export function calculateProfitFactor(trades: any[]): number {

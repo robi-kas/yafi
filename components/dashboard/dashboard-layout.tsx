@@ -6,8 +6,9 @@ import { Sidebar } from "./sidebar"
 import { cn } from "@/lib/utils"
 import { CommandSearch, useCommandSearch } from "./command-search"
 import { NotificationToast } from "./notification-toast"
+import { MobileNav } from "./mobile-nav"
 import { motion, AnimatePresence } from "framer-motion"
-import { Menu, Search } from "@/components/icons"
+import { Search } from "@/components/icons"
 import Link from "next/link"
 
 interface DashboardLayoutProps {
@@ -26,13 +27,6 @@ export function DashboardLayout({ children }: DashboardLayoutProps) {
         <header className="fixed left-0 right-0 top-0 z-30 h-14 border-b border-border bg-background/80 backdrop-blur-xl lg:hidden">
           <div className="flex items-center justify-between h-full px-4">
             <div className="flex items-center gap-3">
-              <button
-                onClick={() => setSidebarOpen(true)}
-                className="rounded-md p-2 text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
-                aria-label="Open menu"
-              >
-                <Menu className="w-5 h-5" />
-              </button>
               <Link href="/" className="flex items-center gap-2">
                 <img src="/logo-mark.png" alt="YAFI logo" width={24} height={24} className="w-6 h-6" />
                 <span className="font-semibold tracking-tight">YAFI</span>
@@ -58,7 +52,7 @@ export function DashboardLayout({ children }: DashboardLayoutProps) {
         <CommandSearch open={open} onOpenChange={setOpen} />
 
         <main className={cn(
-          "pt-14 lg:pt-0 transition-all duration-300",
+          "pb-28 pt-14 transition-all duration-300 lg:pb-0 lg:pt-0",
           sidebarCollapsed ? "lg:pl-[72px]" : "lg:pl-64"
         )}>
           <AnimatePresence mode="wait">
@@ -73,6 +67,7 @@ export function DashboardLayout({ children }: DashboardLayoutProps) {
           </AnimatePresence>
         </main>
 
+        <MobileNav onMore={() => setSidebarOpen(true)} />
         <NotificationToast />
       </div>
     </>

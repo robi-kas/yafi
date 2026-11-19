@@ -53,6 +53,7 @@ export const metadata: Metadata = {
 
 export const viewport: Viewport = {
   themeColor: '#09090a',
+  viewportFit: 'cover', // lets the mobile bottom bar respect the iPhone home indicator
 }
 
 export default function RootLayout({

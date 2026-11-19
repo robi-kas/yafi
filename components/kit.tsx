@@ -184,7 +184,7 @@ export function DirectionBadge({ direction }: { direction?: string | null }) {
         isBuy ? "bg-sky-500/10 text-sky-400" : "bg-orange-500/10 text-orange-400"
       )}
     >
-      {isBuy ? "Long" : "Short"}
+      {isBuy ? "Buy" : "Sell"}
     </span>
   )
 }

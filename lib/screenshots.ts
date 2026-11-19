@@ -1,97 +1,24 @@
 // Server-only helpers for trade screenshots in Supabase Storage.
 //
 // Files live in a PRIVATE bucket under `<userId>/<kind>-<uuid>.<ext>`.
-// The database (TradeScreenshot.path) stores only that path. Browsers upload
-// directly to Storage with one-time signed upload URLs issued by
-// /api/screenshots/upload-url, and read through short-lived signed URLs, so
-// images never pass through (or count against) Vercel's request body limit.
+// Everything runs as the signed-in user (their session cookie), and Storage
+// policies (see supabase/storage-screenshots.sql) only allow a user to
+// read, write or delete objects inside their own `<userId>/` folder. No
+// service-role key is needed. The database (TradeScreenshot.path) stores only
+// the path; browsers upload directly and read through short-lived signed URLs,
+// so images never pass through Vercel's request body limit.
 import 'server-only'
-import { createClient, type SupabaseClient } from '@supabase/supabase-js'
+import { createClient } from '@/lib/supabase/server'
 import prisma from '@/lib/db'
 
 export const SCREENSHOT_BUCKET = 'trade-screenshots'
 const SIGNED_URL_TTL = 60 * 60 * 24 // 24h
 const SIGN_MARKER = `/storage/v1/object/sign/${SCREENSHOT_BUCKET}/`
+const STORAGE_PATH = /^[0-9a-f-]{36}\//i
 
-// Projects migrated to Supabase's new API keys reject the legacy service_role
-// JWT ("signature verification failed"), so try each configured server key and
-// keep the first one Storage accepts.
-function candidateKeys(): string[] {
-  return [process.env.SUPABASE_SECRET_KEY, process.env.SUPABASE_SERVICE_ROLE_KEY].filter(
-    (k, i, all): k is string => !!k && all.indexOf(k) === i
-  )
-}
-
-function makeClient(key: string): SupabaseClient {
-  const url = process.env.NEXT_PUBLIC_SUPABASE_URL
-  if (!url) throw new Error('Screenshot storage is not configured (missing Supabase URL)')
-  return createClient(url, key, { auth: { persistSession: false, autoRefreshToken: false } })
-}
-
-let admin: SupabaseClient | null = null
-let adminReady: Promise<SupabaseClient> | null = null
-
-/** Resolves a working admin client and makes sure the private bucket exists. */
-function ready(): Promise<SupabaseClient> {
-  adminReady ??= (async () => {
-    const keys = candidateKeys()
-    if (!keys.length) throw new Error('Screenshot storage is not configured (missing Supabase secret key)')
-    let lastError: unknown = null
-    for (const key of keys) {
-      const sb = makeClient(key)
-      const { data, error } = await sb.storage.getBucket(SCREENSHOT_BUCKET)
-      if (data) {
-        admin = sb
-        return sb
-      }
-      // "not found" means the key works but the bucket doesn't exist yet.
-      if (error && /not.?found/i.test(error.message)) {
-        const created = await sb.storage.createBucket(SCREENSHOT_BUCKET, {
-          public: false,
-          fileSizeLimit: 10 * 1024 * 1024,
-          allowedMimeTypes: ['image/png', 'image/jpeg', 'image/webp', 'image/gif'],
-        })
-        if (!created.error || /already exists/i.test(created.error.message)) {
-          admin = sb
-          return sb
-        }
-        lastError = created.error
-        continue
-      }
-      lastError = error
-    }
-    throw lastError instanceof Error ? lastError : new Error(String((lastError as any)?.message || lastError))
-  })().catch((err) => {
-    adminReady = null // retry on the next request
-    throw err
-  })
-  return adminReady
-}
-
-export async function ensureBucket(): Promise<void> {
-  await ready()
-}
-
-async function adminClient(): Promise<SupabaseClient> {
-  return admin ?? ready()
-}
-
-const EXT: Record<string, string> = { 'image/png': 'png', 'image/jpeg': 'jpg', 'image/webp': 'webp', 'image/gif': 'gif' }
-const KINDS = new Set(['htf', 'entry', 'exit', 'img'])
-
-/** Issues one-time upload URLs for new files in the user's own folder. */
-export async function createUploadTargets(userId: string, files: { kind?: string; contentType?: string }[]) {
-  const sb = await adminClient()
-  return Promise.all(
-    files.map(async (f) => {
-      const ext = EXT[f.contentType || ''] || 'webp'
-      const kind = KINDS.has(f.kind || '') ? f.kind : 'img'
-      const path = `${userId}/${kind}-${crypto.randomUUID()}.${ext}`
-      const { data, error } = await sb.storage.from(SCREENSHOT_BUCKET).createSignedUploadUrl(path)
-      if (error || !data) throw error || new Error('Could not create upload URL')
-      return { path, token: data.token }
-    })
-  )
+async function bucket() {
+  const sb = await createClient()
+  return sb.storage.from(SCREENSHOT_BUCKET)
 }
 
 /**
@@ -112,12 +39,10 @@ export function toOwnedPath(userId: string, ref: unknown): string | null {
 /** Maps storage paths to signed URLs; non-storage (legacy) values pass through unchanged. */
 export async function signScreenshotPaths(paths: string[]): Promise<Map<string, string>> {
   const out = new Map<string, string>()
-  const storagePaths = [...new Set(paths.filter((p) => /^[0-9a-f-]{36}\//i.test(p)))]
+  const storagePaths = [...new Set(paths.filter((p) => STORAGE_PATH.test(p)))]
   if (!storagePaths.length) return out
   try {
-    const { data, error } = await (await adminClient())
-      .storage.from(SCREENSHOT_BUCKET)
-      .createSignedUrls(storagePaths, SIGNED_URL_TTL)
+    const { data, error } = await (await bucket()).createSignedUrls(storagePaths, SIGNED_URL_TTL)
     if (error) throw error
     for (const item of data || []) if (item.path && item.signedUrl) out.set(item.path, item.signedUrl)
   } catch (err) {
@@ -127,19 +52,19 @@ export async function signScreenshotPaths(paths: string[]): Promise<Map<string, 
 }
 
 export async function removeObjects(paths: string[]) {
-  const storagePaths = paths.filter((p) => /^[0-9a-f-]{36}\//i.test(p))
+  const storagePaths = paths.filter((p) => STORAGE_PATH.test(p))
   if (!storagePaths.length) return
-  const { error } = await (await adminClient()).storage.from(SCREENSHOT_BUCKET).remove(storagePaths)
+  const { error } = await (await bucket()).remove(storagePaths)
   if (error) console.error('Removing screenshots failed:', error)
 }
 
 /** Removes every object in the user's folder (used when wiping their data). */
 export async function removeAllForUser(userId: string) {
-  const sb = await adminClient()
+  const b = await bucket()
   for (;;) {
-    const { data, error } = await sb.storage.from(SCREENSHOT_BUCKET).list(userId, { limit: 1000 })
+    const { data, error } = await b.list(userId, { limit: 1000 })
     if (error || !data?.length) return
-    await sb.storage.from(SCREENSHOT_BUCKET).remove(data.map((o) => `${userId}/${o.name}`))
+    await b.remove(data.map((o) => `${userId}/${o.name}`))
     if (data.length < 1000) return
   }
 }

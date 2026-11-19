@@ -133,3 +133,11 @@ describe('trading-metrics', () => {
     expect(calcResult({ profitLoss: -1 })).toBe('loss')
   })
 })
+
+import { calculateWinRate } from '../lib/trading-metrics'
+describe('calculateWinRate', () => {
+  it('keeps one decimal and ignores breakevens', () => {
+    expect(calculateWinRate(12, 16)).toBe(42.9)
+    expect(calculateWinRate(0, 0)).toBe(0)
+  })
+})

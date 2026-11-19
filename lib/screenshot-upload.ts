@@ -29,25 +29,34 @@ async function compress(dataUrl: string): Promise<Blob> {
   }
 }
 
-/** Uploads data-URL images and returns their storage paths, in the same order. */
+const EXT: Record<string, string> = { "image/png": "png", "image/jpeg": "jpg", "image/webp": "webp", "image/gif": "gif" }
+
+/**
+ * Uploads data-URL images into the signed-in user's own folder and returns
+ * their storage paths, in the same order. Storage policies only allow writes
+ * under `<userId>/`, so this runs entirely with the user's session.
+ */
 export async function uploadScreenshots(items: { kind: ScreenshotKind; dataUrl: string }[]): Promise<string[]> {
   if (!items.length) return []
+  const supabase = createClient()
+  const { data: auth } = await supabase.auth.getUser()
+  const userId = auth.user?.id
+  if (!userId) throw new Error("You're signed out. Sign in again to upload screenshots.")
+
   const blobs = await Promise.all(items.map((i) => compress(i.dataUrl)))
-
-  const res = await fetch("/api/screenshots/upload-url", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ files: items.map((i, n) => ({ kind: i.kind, contentType: blobs[n].type })) }),
-  })
-  const json = await res.json().catch(() => ({}))
-  if (!res.ok) throw new Error(json.error || `Could not prepare screenshot upload (${res.status})`)
-
-  const storage = createClient().storage.from(BUCKET)
+  const storage = supabase.storage.from(BUCKET)
   return Promise.all(
-    json.targets.map(async (t: { path: string; token: string }, n: number) => {
-      const { error } = await storage.uploadToSignedUrl(t.path, t.token, blobs[n], { contentType: blobs[n].type })
-      if (error) throw new Error(`Screenshot upload failed: ${error.message}`)
-      return t.path
+    items.map(async (item, n) => {
+      const blob = blobs[n]
+      const path = `${userId}/${item.kind}-${crypto.randomUUID()}.${EXT[blob.type] || "webp"}`
+      const { error } = await storage.upload(path, blob, { contentType: blob.type || "image/webp", upsert: false })
+      if (error) {
+        const hint = /bucket not found|row-level security|policy/i.test(error.message)
+          ? " (screenshot storage isn't set up yet; run the storage SQL in Supabase)"
+          : ""
+        throw new Error(`Screenshot upload failed: ${error.message}${hint}`)
+      }
+      return path
     })
   )
 }

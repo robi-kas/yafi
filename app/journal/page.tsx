@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, Fragment, useMemo } from "react"
+import { useState, Fragment, useMemo, useEffect } from "react"
 import { DashboardLayout } from "@/components/dashboard/dashboard-layout"
 import { TradeEntryForm } from "@/components/dashboard/trade-entry-form"
 import { useDashboard } from "@/context/dashboard-context"
@@ -13,6 +13,7 @@ import { Plus, Trash2, Edit2, Search, ChevronDown, ChevronRight, AlertTriangle, 
 import { calcResult as sharedCalcResult, calculateWinRate } from "@/lib/trading-metrics"
 import { Page, PageHeader, Panel, StatCard, EmptyState, ResultBadge, DirectionBadge, formatMoney, pnlTone } from "@/components/kit"
 import { cn } from "@/lib/utils"
+import { NEW_TRADE_EVENT } from "@/components/dashboard/mobile-nav"
 
 const MODEL_ABBR: Record<string, string> = {
   "Breaker Block": "BB",
@@ -240,6 +241,21 @@ export default function TradeJournal() {
     setSelectedTrade(null)
     setShowForm(true)
   }
+
+  // Mobile bottom bar "+": opens the form via ?new=1 or, when already here, an event.
+  useEffect(() => {
+    const open = () => {
+      setSelectedTrade(null)
+      setShowForm(true)
+    }
+    const params = new URLSearchParams(window.location.search)
+    if (params.get("new") === "1") {
+      open()
+      window.history.replaceState(null, "", window.location.pathname)
+    }
+    window.addEventListener(NEW_TRADE_EVENT, open)
+    return () => window.removeEventListener(NEW_TRADE_EVENT, open)
+  }, [])
 
   const totalPL = filteredTrades.reduce((sum, t) => sum + (t.profitLoss || 0), 0)
   const winCount = filteredTrades.filter(t => calcResult(t) === "win").length
