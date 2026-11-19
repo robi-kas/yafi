@@ -23,6 +23,7 @@ import {
 } from "recharts"
 import { Page, PageHeader, Panel, PanelHeader, PanelBody, StatCard, EmptyState, formatMoney, pnlTone } from "@/components/kit"
 import { cn } from "@/lib/utils"
+import { isClosedTrade } from "@/lib/trading-metrics"
 
 /* ─── Small building blocks ─── */
 
@@ -167,7 +168,10 @@ const SECTIONS: SectionDef[] = [
 
 /* ─── Main component ─── */
 function AnalyticsInner() {
-  const { trades, performanceMetrics } = useDashboard()
+  const { trades: allTrades, performanceMetrics } = useDashboard()
+  // Analytics describe realised results: only finished trades count, so every
+  // P&L, win rate and R figure on this page uses the same population.
+  const trades = useMemo(() => allTrades.filter(isClosedTrade), [allTrades])
   const [collapsed, setCollapsed] = useState<Set<string>>(new Set())
   const toggle = (id: string) => setCollapsed(p => { const n = new Set(p); n.has(id) ? n.delete(id) : n.add(id); return n })
 

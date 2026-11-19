@@ -32,7 +32,8 @@ export function TradeHeatmap() {
 
         const tradeMap: Record<string, { count: number; netPL: number }> = {}
         trades.forEach((trade) => {
-            const dateKey = format(parseISO(trade.entryTime), "yyyy-MM-dd")
+            // Realised P&L belongs to the day the trade closed.
+            const dateKey = format(parseISO(trade.exitTime || trade.entryTime), "yyyy-MM-dd")
             tradeMap[dateKey] ??= { count: 0, netPL: 0 }
             tradeMap[dateKey].count += 1
             tradeMap[dateKey].netPL += trade.profitLoss || 0

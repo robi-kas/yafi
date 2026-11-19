@@ -39,7 +39,8 @@ export function TradeCalendar() {
         const stats: Record<string, { trades: Trade[]; netPL: number; result: "win" | "loss" | "breakeven" }> = {}
 
         trades.forEach((trade) => {
-            const dateKey = format(parseISO(trade.entryTime), "yyyy-MM-dd")
+            // Realised P&L belongs to the day the trade closed.
+            const dateKey = format(parseISO(trade.exitTime || trade.entryTime), "yyyy-MM-dd")
             if (!stats[dateKey]) {
                 stats[dateKey] = { trades: [], netPL: 0, result: "breakeven" }
             }
@@ -61,12 +62,12 @@ export function TradeCalendar() {
         const start = startOfMonth(currentMonth)
         const end = endOfMonth(currentMonth)
 
-        const monthTrades = trades.filter((t) => isWithinInterval(parseISO(t.entryTime), { start, end }))
+        const monthTrades = trades.filter((t) => isWithinInterval(parseISO(t.exitTime || t.entryTime), { start, end }))
 
         const totalPL = monthTrades.reduce((sum, t) => sum + (t.profitLoss || 0), 0)
         const { wins, losses } = getWinLossCounts(monthTrades)
         const winRate = calculateWinRate(wins, losses)
-        const tradingDays = new Set(monthTrades.map((t) => format(parseISO(t.entryTime), "yyyy-MM-dd")))
+        const tradingDays = new Set(monthTrades.map((t) => format(parseISO(t.exitTime || t.entryTime), "yyyy-MM-dd")))
         let greenDays = 0
         tradingDays.forEach((d) => {
             if ((dailyStats[d]?.netPL || 0) > 0.01) greenDays++

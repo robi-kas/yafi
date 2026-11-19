@@ -1,6 +1,7 @@
 import { Trade } from "@/context/dashboard-context"
 import { rMultiple, initialRiskUsd } from "./instruments"
 import {
+  calculateMetrics,
   calcResult,
   getWinLossCounts,
   calculateWinRate,
@@ -22,8 +23,10 @@ export const ENTRY_MODELS = [
   "Order Block", "FVG", "IFVG", "Breaker Block", "MSS", "Liquidity Sweep", "HTF POI",
 ] as const
 
+// R buckets by how many R a trade made or lost: a -1.0R stop-out is
+// "-1R to 0R", a +2.0R winner "+1R to +2R"; |R| < 0.05 counts as breakeven.
 export const R_BUCKETS = [
-  { key: "<= -4R", min: -Infinity, max: -4 },
+  { key: "< -4R", min: -Infinity, max: -4 },
   { key: "-4R to -3R", min: -4, max: -3 },
   { key: "-3R to -2R", min: -3, max: -2 },
   { key: "-2R to -1R", min: -2, max: -1 },
@@ -33,8 +36,21 @@ export const R_BUCKETS = [
   { key: "+1R to +2R", min: 1, max: 2 },
   { key: "+2R to +3R", min: 2, max: 3 },
   { key: "+3R to +4R", min: 3, max: 4 },
-  { key: ">= +4R", min: 4, max: Infinity },
+  { key: "> +4R", min: 4, max: Infinity },
 ] as const
+
+const BREAKEVEN_R = 0.05
+
+/** Bucket key for an R multiple (losses: [min, max), wins: (min, max]). */
+export function rBucketKey(r: number): string {
+  if (Math.abs(r) < BREAKEVEN_R) return "0R (Breakeven)"
+  if (r > 0) {
+    const k = Math.ceil(r - 1e-9)
+    return k > 4 ? "> +4R" : k === 1 ? "0R to +1R" : `+${k - 1}R to +${k}R`
+  }
+  const k = Math.ceil(-r - 1e-9)
+  return k > 4 ? "< -4R" : k === 1 ? "-1R to 0R" : `-${k}R to -${k - 1}R`
+}
 
 export function isLegacyTrade(trade: Trade): boolean {
   return !trade.entryModel || trade.entryModel === "UNKNOWN"
@@ -59,14 +75,15 @@ function sumR(subset: Trade[]): number {
 function getDayName(dateStr: string): string {
   try {
     const d = new Date(dateStr)
-    return ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"][d.getUTCDay()]
+    // Local time, matching the calendar (the trader's own day, not UTC).
+    return ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"][d.getDay()]
   } catch { return "Unknown" }
 }
 
 function getMonthKey(dateStr: string): string {
   try {
     const d = new Date(dateStr)
-    return `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, "0")}`
+    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`
   } catch { return "Unknown" }
 }
 
@@ -96,7 +113,8 @@ export function getPerformanceByRMultiple(trades: Trade[]): RBucketStat[] {
   for (const t of trades) {
     const r = getRMultiple(t)
     if (r === null) continue
-    const bucket = buckets.find(b => r >= b.min && r < (b.max === Infinity ? Infinity : r <= b.max ? b.max + 0.0001 : b.max))
+    const key = rBucketKey(r)
+    const bucket = buckets.find(b => b.key === key)
     if (bucket) {
       bucket.count++
       bucket.totalPnl += t.profitLoss || 0
@@ -428,7 +446,8 @@ export function getMonthlyPerformance(trades: Trade[]): MonthlyStat[] {
   const map = new Map<string, Trade[]>()
   for (const t of trades) {
     if (!t.entryTime) continue
-    const key = getMonthKey(t.entryTime)
+    // Realised P&L is booked in the month the trade closed.
+    const key = getMonthKey(t.exitTime || t.entryTime)
     if (!map.has(key)) map.set(key, [])
     map.get(key)!.push(t)
   }
@@ -455,20 +474,20 @@ export interface ExpectancyData {
   avgLoss: number
 }
 
+// Standard definitions (MetaTrader "expected payoff", Van Tharp expectancy):
+// $ expectancy = net P&L / closed trades; R expectancy = average R per closed
+// trade with breakevens counted as 0R. Win/loss rates are shares of ALL closed
+// trades here so that winRate*avgWin - lossRate*avgLoss equals the $ figure.
 export function getExpectancy(trades: Trade[]): ExpectancyData {
-  const { wins, losses } = getWinLossCounts(trades)
-  const total = wins + losses
-  const winRate = total > 0 ? wins / total : 0
-  const lossRate = total > 0 ? losses / total : 0
-  const avgWin = calculateAvgWin(trades)
-  const avgLoss = calculateAvgLoss(trades)
+  const m = calculateMetrics(trades as any)
+  const closed = m.closedTrades
   return {
-    expectancyPerTrade: (winRate * avgWin) - (lossRate * avgLoss),
-    expectancyInR: total > 0 ? trades.reduce((s, t) => s + (t.profitLoss || 0), 0) / trades.length : 0,
-    winRate: winRate * 100,
-    lossRate: lossRate * 100,
-    avgWin,
-    avgLoss,
+    expectancyPerTrade: m.expectancyPerClosed,
+    expectancyInR: m.expectancyInR,
+    winRate: closed > 0 ? (m.wins / closed) * 100 : 0,
+    lossRate: closed > 0 ? (m.losses / closed) * 100 : 0,
+    avgWin: m.averageWinner,
+    avgLoss: m.averageLoser,
   }
 }
 

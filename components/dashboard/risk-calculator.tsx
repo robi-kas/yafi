@@ -35,6 +35,10 @@ interface RiskCalculatorProps {
 type AssetType = "forex" | "gold" | "indices" | "crypto"
 type RiskMode = "percent" | "fixed"
 
+// multiplier = US$ per ONE stop-loss unit per 1 standard lot.
+// Standard MT5 contracts: FX 100,000 units (USD-quoted pairs: 1 pip = 0.0001
+// = $10/lot), gold 100 oz (1 tick = $0.01 = $1/lot), indices and crypto
+// 1 contract (1 point / $1 = $1/lot; index contract sizes vary by broker).
 const ASSET_CONFIGS: Record<AssetType, {
     name: string,
     multiplier: number,
@@ -43,9 +47,9 @@ const ASSET_CONFIGS: Record<AssetType, {
     unit: string
 }> = {
     forex: { name: "Forex", multiplier: 10, pipDecimal: 4, label: "Pips", unit: "Lots" },
-    gold: { name: "Gold", multiplier: 100, pipDecimal: 2, label: "Ticks", unit: "Lots" },
-    indices: { name: "Indices", multiplier: 1, pipDecimal: 2, label: "Points", unit: "Lots" },
-    crypto: { name: "Crypto", multiplier: 1, pipDecimal: 2, label: "Price", unit: "Units" }
+    gold: { name: "Gold", multiplier: 1, pipDecimal: 2, label: "Ticks ($0.01)", unit: "Lots" },
+    indices: { name: "Indices", multiplier: 1, pipDecimal: 0, label: "Points", unit: "Lots" },
+    crypto: { name: "Crypto", multiplier: 1, pipDecimal: 0, label: "Price ($)", unit: "Lots" }
 }
 
 export function PositionSizeCalculator({ initialBalance: rawBalance }: RiskCalculatorProps) {

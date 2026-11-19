@@ -61,7 +61,7 @@ function DashboardInner() {
   const [accountDialog, setAccountDialog] = useState<{ mode: "add" | "edit"; account?: Account } | null>(null)
   const [form, setForm] = useState({ name: "", broker: "", balance: "" })
 
-  const m = useMemo(() => calculateMetrics(trades as any), [trades])
+  const m = useMemo(() => calculateMetrics(trades as any, performanceMetrics.totalDeposit), [trades, performanceMetrics.totalDeposit])
 
   // P&L per account, so each account card shows its own balance.
   const pnlByAccount = useMemo(() => {
@@ -182,7 +182,7 @@ function DashboardInner() {
           value={formatMoney(m.expectancyPerClosed, { sign: true })}
           tone={pnlTone(m.expectancyPerClosed)}
           icon={LineChart}
-          sub={`Max drawdown ${formatMoney(Math.abs(m.maxDrawdown))}`}
+          sub={`Max drawdown ${formatMoney(Math.abs(m.maxDrawdown))}${m.maxDrawdownPct > 0 ? ` (${m.maxDrawdownPct.toFixed(1)}%)` : ""}`}
         />
       </div>
 

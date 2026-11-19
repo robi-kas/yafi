@@ -114,6 +114,7 @@ export interface PerformanceMetrics {
   avgLoss: number
   totalProfitLoss: number
   maxDrawdown: number
+  maxDrawdownPct?: number
   consistency: number
   winRateChange?: number
   profitFactorChange?: number
@@ -274,45 +275,44 @@ export function DashboardProvider({ children }: { children: React.ReactNode }) {
   }, [refreshMetrics])
 
   const updateMetrics = useCallback(() => {
-    if (trades.length === 0) return
+    if (trades.length === 0) {
+      // No trades (e.g. after clearing data): reset instead of keeping stale numbers.
+      const totalDeposit = accounts.reduce((sum, acc) => sum + (acc.balance || 0), 0)
+      setPerformanceMetrics((prev) => ({
+        ...prev,
+        totalTrades: 0, winningTrades: 0, losingTrades: 0, breakevenTrades: 0,
+        winRate: 0, profitFactor: 0, avgWin: 0, avgLoss: 0, totalProfitLoss: 0,
+        maxDrawdown: 0, consistency: 0, sparklineData: [],
+        totalDeposit, netBalance: totalDeposit, roi: 0, calculatedStrategies: [],
+      }))
+      return
+    }
 
-    // Auto-discover and calculate performance for strategies
+    // Per-strategy stats from finished trades, using the shared metrics engine.
     const strategyMap = new Map<string, Strategy>()
-
-    // Initialize from existing strategies
     strategies.forEach(s => strategyMap.set(s.name, { ...s, trades: 0, winRate: 0, avgWin: 0, avgLoss: 0 }))
-
-    // Calculate for all strategies found in trades
-    trades.forEach(t => {
+    const byStrategy = new Map<string, Trade[]>()
+    for (const t of trades) {
       const sName = t.strategy || "Default"
+      if (!byStrategy.has(sName)) byStrategy.set(sName, [])
+      byStrategy.get(sName)!.push(t)
+    }
+    byStrategy.forEach((sTrades, sName) => {
       if (!strategyMap.has(sName)) {
-        strategyMap.set(sName, {
-          id: `auto-${sName}`,
-          name: sName,
-          trades: 0,
-          winRate: 0,
-          avgWin: 0,
-          avgLoss: 0,
-          description: "Auto-discovered strategy"
-        })
+        strategyMap.set(sName, { id: `auto-${sName}`, name: sName, trades: 0, winRate: 0, avgWin: 0, avgLoss: 0, description: "Auto-discovered strategy" })
       }
-
+      const sm = calculateMetrics(sTrades as any)
       const s = strategyMap.get(sName)!
-      const sTrades = trades.filter(tr => (tr.strategy || "Default") === sName)
-      const { wins: sWins, losses: sLosses } = getWinLossCounts(sTrades)
-      const sGrossProfit = sTrades.filter(tr => calcResult(tr) === "win").reduce((sum, tr) => sum + (tr.profitLoss || 0), 0)
-      const sGrossLoss = Math.abs(sTrades.filter(tr => calcResult(tr) === "loss").reduce((sum, tr) => sum + (tr.profitLoss || 0), 0))
-
       s.trades = sTrades.length
-      s.winRate = calculateWinRate(sWins, sLosses)
-      s.avgWin = sWins > 0 ? Number((sGrossProfit / sWins).toFixed(2)) : 0
-      s.avgLoss = sLosses > 0 ? Number((sGrossLoss / sLosses).toFixed(2)) : 0
+      s.winRate = calculateWinRate(sm.wins, sm.losses)
+      s.avgWin = Number(sm.averageWinner.toFixed(2))
+      s.avgLoss = Number(sm.averageLoser.toFixed(2))
     })
 
     const calculatedStrategies = Array.from(strategyMap.values())
 
-    const metrics = calculateMetrics(trades)
     const totalDeposit = accounts.reduce((sum, acc) => sum + (acc.balance || 0), 0)
+    const metrics = calculateMetrics(trades, totalDeposit)
     const netBalance = totalDeposit + metrics.netPnl
     const roi = totalDeposit > 0 ? (metrics.netPnl / totalDeposit) * 100 : 0
 
@@ -330,14 +330,16 @@ export function DashboardProvider({ children }: { children: React.ReactNode }) {
       winningTrades: metrics.wins,
       losingTrades: metrics.losses,
       breakevenTrades: metrics.breakevens,
-      winRate: metrics.winRateIncludingBreakevens,
+      winRate: metrics.winRateExcludingBreakevens, // same definition as every page: wins / (wins + losses)
       profitFactor: metrics.profitFactor,
       avgWin: metrics.averageWinner,
       avgLoss: metrics.averageLoser,
       totalProfitLoss: metrics.netPnl,
       maxDrawdown: Math.round(metrics.maxDrawdown * 100) / 100,
+      maxDrawdownPct: Math.round(metrics.maxDrawdownPct * 100) / 100,
       consistency: Math.round(consistency * 100) / 100,
-      sparklineData: trades.slice(-12).map(t => t.profitLoss || 0),
+      // Last 12 trades in time order (trades are stored newest first).
+      sparklineData: [...trades].sort((a, b) => new Date(a.entryTime).getTime() - new Date(b.entryTime).getTime()).slice(-12).map(t => t.profitLoss || 0),
       totalDeposit: totalDeposit,
       netBalance: netBalance,
       roi: roi,

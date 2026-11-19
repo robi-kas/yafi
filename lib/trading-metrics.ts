@@ -45,6 +45,8 @@ export interface CalculatedMetrics {
   totalR: number
   expectancyInR: number
   maxDrawdown: number
+  /** Largest peak-to-trough drop as % of the peak balance (needs startingBalance). */
+  maxDrawdownPct: number
   recoveryFactor: number
   largestWinner: number
   largestLoser: number
@@ -63,7 +65,11 @@ export function isClosedTrade(t: { tradeStatus?: string | null; exitPrice?: numb
   return t.exitPrice != null && t.exitPrice !== 0
 }
 
-export function calculateMetrics(trades: TradeMetricsInput[]): CalculatedMetrics {
+/**
+ * @param startingBalance account capital before these trades; enables the
+ *   percentage drawdown (MetaTrader "relative drawdown").
+ */
+export function calculateMetrics(trades: TradeMetricsInput[], startingBalance = 0): CalculatedMetrics {
   const warnings: MetricWarnings = {
     missingInitialRisk: 0,
     missingExitPrice: 0,
@@ -89,6 +95,7 @@ export function calculateMetrics(trades: TradeMetricsInput[]): CalculatedMetrics
 
   // Calculate drawdown (simplified chronological approach)
   let maxDrawdown = 0
+  let maxDrawdownPct = 0
   let peak = 0
   let cumulativePnl = 0
 
@@ -107,6 +114,11 @@ export function calculateMetrics(trades: TradeMetricsInput[]): CalculatedMetrics
     if (cumulativePnl > peak) peak = cumulativePnl
     const drawdown = peak - cumulativePnl
     if (drawdown > maxDrawdown) maxDrawdown = drawdown
+    const peakEquity = startingBalance + peak
+    if (startingBalance > 0 && peakEquity > 0) {
+      const pct = (drawdown / peakEquity) * 100
+      if (pct > maxDrawdownPct) maxDrawdownPct = pct
+    }
 
     if (Math.abs(pnl) <= BREAKEVEN_TOLERANCE_USD) {
       breakevens++
@@ -172,6 +184,7 @@ export function calculateMetrics(trades: TradeMetricsInput[]): CalculatedMetrics
     totalR,
     expectancyInR,
     maxDrawdown,
+    maxDrawdownPct,
     recoveryFactor,
     largestWinner,
     largestLoser,

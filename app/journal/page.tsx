@@ -10,7 +10,7 @@ import { Label } from "@/components/ui/label"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { ImageViewer } from "@/components/ui/image-viewer"
 import { Plus, Trash2, Edit2, Search, ChevronDown, ChevronRight, AlertTriangle, BookOpen } from "@/components/icons"
-import { calcResult as sharedCalcResult, calculateWinRate } from "@/lib/trading-metrics"
+import { getWinLossCounts, calcResult as sharedCalcResult, calculateWinRate } from "@/lib/trading-metrics"
 import { Page, PageHeader, Panel, StatCard, EmptyState, ResultBadge, DirectionBadge, formatMoney, pnlTone } from "@/components/kit"
 import { cn } from "@/lib/utils"
 import { NEW_TRADE_EVENT } from "@/components/dashboard/mobile-nav"
@@ -258,9 +258,8 @@ export default function TradeJournal() {
   }, [])
 
   const totalPL = filteredTrades.reduce((sum, t) => sum + (t.profitLoss || 0), 0)
-  const winCount = filteredTrades.filter(t => calcResult(t) === "win").length
-  const lossCount = filteredTrades.filter(t => calcResult(t) === "loss").length
-  const beCount = filteredTrades.filter(t => calcResult(t) === "breakeven").length
+  // Shared counter: only finished trades count (an open trade isn't a breakeven).
+  const { wins: winCount, losses: lossCount, breakevens: beCount } = getWinLossCounts(filteredTrades)
   const winRate = calculateWinRate(winCount, lossCount)
 
   const columnCount = showNetR ? 15 : 14

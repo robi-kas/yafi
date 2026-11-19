@@ -10,6 +10,8 @@ import { Label } from "@/components/ui/label"
 import { X, Upload, AlertTriangle } from "@/components/icons"
 import { cn } from "@/lib/utils"
 import { resolveScreenshotList, screenshotKind } from "@/lib/screenshot-upload"
+import { usdPerPointPerLot } from "@/lib/instruments"
+import { calcResult } from "@/lib/trading-metrics"
 
 // Native selects/textareas kept (optgroups, required validation) but styled to match ui/input.
 const selectCls =
@@ -28,43 +30,6 @@ const MARKET_SYMBOLS: Record<string, string[]> = {
   stocks: ["AAPL", "TSLA", "NVDA", "MSFT", "AMZN", "GOOGL", "META", "NFLX"],
   indices: ["US30", "NAS100", "SPX500", "GER40", "UK100", "JPN225"],
   metal: ["XAUUSD", "XAGUSD", "XPTUSD", "XPDUSD"]
-}
-
-function getPipMultiplier(market: TradeMarket, symbol: string): number {
-  const sym = symbol.toUpperCase()
-  if (sym.includes('XAU')) return 10 // Gold ($1 move = 10 pips)
-  if (sym.includes('XAG') || sym.includes('XPT') || sym.includes('XPD')) return 1
-  if (sym.includes('US30') || sym.includes('NAS') || sym.includes('SPX')) return 1
-  if (sym.includes('JPY')) return 100
-  
-  switch (market) {
-    case 'forex':
-      return 10000
-    case 'metal':
-      return 10 // fallback
-    default:
-      return 1
-  }
-}
-
-function getPipValueInDollars(market: TradeMarket, symbol: string, price: number): number {
-  if (market !== 'forex' || price <= 0) return 10
-  if (symbol.includes('JPY')) {
-    return (0.01 / price) * 100000
-  } else {
-    return 10
-  }
-}
-
-const getBasePipValuePerLot = (market: TradeMarket): number => {
-  switch (market) {
-    case 'forex':
-      return 10
-    case 'metal':
-      return 10
-    default:
-      return 10
-  }
 }
 
 interface TradeEntryFormProps {
@@ -261,6 +226,16 @@ export function TradeEntryForm({ onClose, initialTrade, defaultEntryTime }: Trad
     }
   }, [formData.exitPrice])
 
+  // Has the user edited anything that changes this trade's P&L / R?
+  const sameNum = (a: unknown, b: unknown) => Math.abs((Number(a) || 0) - (Number(b) || 0)) < 1e-9
+  const pnlInputsChanged = !initialTrade ||
+    !sameNum(formData.entryPrice, initialTrade.entryPrice) ||
+    !sameNum(formData.exitPrice, initialTrade.exitPrice) ||
+    !sameNum(formData.lotSize, initialTrade.lotSize) ||
+    formData.direction !== initialTrade.direction ||
+    formData.symbol.trim() !== (initialTrade.symbol || "").trim()
+  const slChanged = !initialTrade || !sameNum(formData.stopLoss, initialTrade.stopLoss)
+
   const liveStats = React.useMemo(() => {
     const entry = Number(formData.entryPrice) || 0
     const sl = Number(formData.stopLoss) || 0
@@ -268,73 +243,28 @@ export function TradeEntryForm({ onClose, initialTrade, defaultEntryTime }: Trad
     const exit = Number(formData.exitPrice) || 0
     const size = Number(formData.lotSize) || 0
     const direction = formData.direction
-    const multiplier = getPipMultiplier(formData.market, formData.symbol)
+    const dir = direction === "buy" ? 1 : -1
+    // US$ value of a 1.0 price move for 1 lot (gold 100, EURUSD 100,000, NAS100 1...)
+    const usdPerPoint = usdPerPointPerLot(formData.symbol, entry, formData.market)
 
-    let pipValue = getBasePipValuePerLot(formData.market)
-    if (formData.market === 'forex' && entry > 0) {
-      pipValue = getPipValueInDollars(formData.market, formData.symbol, entry)
-    }
+    // PLANNED METRICS (each needs only its own inputs)
+    const riskPoints = entry > 0 && sl > 0 ? (entry - sl) * dir : 0       // > 0 when the stop is on the right side
+    const rewardPoints = entry > 0 && tp > 0 ? (tp - entry) * dir : 0
+    const rrPlanned = riskPoints > 0 && rewardPoints > 0 ? rewardPoints / riskPoints : 0
+    const riskAmount = entry > 0 && sl > 0 && size > 0 ? Math.abs(entry - sl) * size * usdPerPoint : 0
+    const plannedProfit = entry > 0 && tp > 0 && size > 0 ? rewardPoints * size * usdPerPoint : 0
+    const plannedLoss = -riskAmount
 
-    // PLANNED METRICS (from TP)
-    let riskPoints = 0
-    let rewardPoints = 0
-    let rrPlanned = 0
-    let riskAmount = 0
-    let plannedProfit = 0
-    let plannedLoss = 0
-
-    if (entry > 0 && sl > 0 && tp > 0) {
-      if (direction === "buy") {
-        riskPoints = entry - sl
-        rewardPoints = tp - entry
-      } else {
-        riskPoints = sl - entry
-        rewardPoints = entry - tp
-      }
-      rrPlanned = riskPoints > 0 ? rewardPoints / riskPoints : 0
-    }
-
-    if (entry > 0 && sl > 0 && size > 0) {
-      const diff = Math.abs(entry - sl)
-      riskAmount = diff * multiplier * size * pipValue
-    }
-
-    if (entry > 0 && tp > 0 && size > 0) {
-      let diff = 0
-      if (direction === "buy") {
-        diff = tp - entry
-      } else {
-        diff = entry - tp
-      }
-      plannedProfit = diff * multiplier * size * pipValue
-    }
-
-    if (entry > 0 && sl > 0 && size > 0) {
-      const diff = Math.abs(entry - sl)
-      plannedLoss = -diff * multiplier * size * pipValue
-    }
-
-    // ACTUAL METRICS (from Exit Price)
-    let actualRewardPoints = 0
-    let rrActual = 0
-    let actualPnL = 0
-    let actualResult: "win" | "loss" | "breakeven" = "breakeven"
-
-    if (entry > 0 && sl > 0 && exit > 0) {
-      if (direction === "buy") {
-        actualRewardPoints = exit - entry
-      } else {
-        actualRewardPoints = entry - exit
-      }
-      rrActual = riskPoints > 0 ? actualRewardPoints / riskPoints : 0
-
-      const diff = direction === "buy" ? (exit - entry) : (entry - exit)
-      actualPnL = diff * multiplier * size * pipValue
-
-      if (rrActual > 0) actualResult = "win"
-      else if (rrActual < 0) actualResult = "loss"
-      else actualResult = "breakeven"
-    }
+    // ACTUAL METRICS (from exit price; no stop loss needed for P&L)
+    const actualRewardPoints = entry > 0 && exit > 0 ? (exit - entry) * dir : 0
+    const rrActual = riskPoints > 0 ? actualRewardPoints / riskPoints : 0
+    // Show the recorded P&L for an unchanged existing trade (it includes commission/swap).
+    const recorded = !pnlInputsChanged && initialTrade?.profitLoss != null ? Number(initialTrade.profitLoss) : null
+    const actualPnL = recorded ?? (entry > 0 && exit > 0 && size > 0 ? actualRewardPoints * size * usdPerPoint : 0)
+    const tolerance = size > 0 || recorded != null ? 0.001 : 0
+    const outcome = size > 0 || recorded != null ? actualPnL : actualRewardPoints
+    const actualResult: "win" | "loss" | "breakeven" =
+      exit > 0 && outcome > tolerance ? "win" : exit > 0 && outcome < -tolerance ? "loss" : "breakeven"
 
     // For backward compatibility - use actual P&L if exit exists, otherwise planned
     const pl = exit > 0 ? actualPnL : plannedProfit + plannedLoss
@@ -354,9 +284,8 @@ export function TradeEntryForm({ onClose, initialTrade, defaultEntryTime }: Trad
       actualResult,
       // Compat
       pl,
-      pipValue
     }
-  }, [formData])
+  }, [formData, pnlInputsChanged, initialTrade])
 
   useEffect(() => {
     const currentLotSize = Number(formData.lotSize) || 0
@@ -369,14 +298,9 @@ export function TradeEntryForm({ onClose, initialTrade, defaultEntryTime }: Trad
 
     if (entry > 0 && sl > 0 && balance > 0) {
       const cashRisk = (balance * riskPercent) / 100
-      const multiplier = getPipMultiplier(formData.market, formData.symbol)
-      const stopLossPips = Math.abs(entry - sl) * multiplier
-      if (stopLossPips > 0) {
-        let pipValue = getBasePipValuePerLot(formData.market)
-        if (formData.market === 'forex') {
-          pipValue = getPipValueInDollars(formData.market, formData.symbol, entry)
-        }
-        const suggestedSize = cashRisk / (stopLossPips * pipValue)
+      const riskPerLot = Math.abs(entry - sl) * usdPerPointPerLot(formData.symbol, entry, formData.market)
+      if (riskPerLot > 0) {
+        const suggestedSize = cashRisk / riskPerLot
         if (Math.abs(suggestedSize - formData.lotSize) > 0.0001) {
           setFormData(prev => ({ ...prev, lotSize: parseFloat(suggestedSize.toFixed(4)) }))
         }
@@ -407,13 +331,7 @@ export function TradeEntryForm({ onClose, initialTrade, defaultEntryTime }: Trad
       return
     }
 
-    const multiplier = getPipMultiplier(initialTrade.market, initialTrade.symbol)
-    let pipValue = getBasePipValuePerLot(initialTrade.market)
-    if (initialTrade.market === "forex") {
-      pipValue = getPipValueInDollars(initialTrade.market, initialTrade.symbol, entry)
-    }
-
-    const riskAmount = Math.abs(entry - sl) * multiplier * size * pipValue
+    const riskAmount = Math.abs(entry - sl) * size * usdPerPointPerLot(initialTrade.symbol, entry, initialTrade.market)
     const riskPercentDerived = (riskAmount / effectiveBalance) * 100
 
     if (Number.isFinite(riskPercentDerived) && riskPercentDerived >= 0) {
@@ -514,16 +432,17 @@ export function TradeEntryForm({ onClose, initialTrade, defaultEntryTime }: Trad
     const stopLoss = parseFloat(formData.stopLoss.toString()) || 0
     const takeProfit = parseFloat(formData.takeProfit.toString()) || 0
 
-    const multiplier = getPipMultiplier(formData.market, formData.symbol)
-    let pipValue = getBasePipValuePerLot(formData.market)
-    if (formData.market === 'forex' && entryPrice > 0) {
-      pipValue = getPipValueInDollars(formData.market, formData.symbol, entryPrice)
-    }
-
-    // Use liveStats for actual metrics when exit price exists
-    const profitLoss = exitPrice > 0 ? liveStats.actualPnL : 0
-    const derivedResult: TradeResult = exitPrice > 0 ? liveStats.actualResult : "breakeven"
-    const rrAchieved = exitPrice > 0 ? liveStats.rrActual : 0
+    // Editing an existing trade keeps its recorded P&L (from the broker, MT5
+    // sync or an import, including commission/swap) unless a field that
+    // changes P&L was edited.
+    const keepRecordedPnl = !!initialTrade && initialTrade.profitLoss != null && !pnlInputsChanged
+    const profitLoss = keepRecordedPnl ? (initialTrade!.profitLoss as number) : exitPrice > 0 ? liveStats.actualPnL : 0
+    const derivedResult: TradeResult = keepRecordedPnl
+      ? calcResult({ profitLoss })
+      : exitPrice > 0 ? liveStats.actualResult : "breakeven"
+    const rrAchieved = keepRecordedPnl && !slChanged && initialTrade!.rrAchieved != null
+      ? initialTrade!.rrAchieved
+      : exitPrice > 0 ? liveStats.rrActual : 0
 
     // Planned RR (from TP/SL)
     let riskToReward = 0
