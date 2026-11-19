@@ -19,10 +19,14 @@ model Account {
   currency    String   @default("USD")
   isLive      Boolean  @default(false)
   syncStatus  String   @default("ACTIVE") // ACTIVE, PAUSED, MAINTENANCE
+  brokerLogin  String?  // MT5 account number (set by YafiSync)
+  brokerServer String?  // MT5 server name
+  lastSyncAt   DateTime?
 
   trades      Trade[]
 
   @@index([userId])
+  @@unique([userId, brokerLogin, brokerServer])
 }
 
 model Strategy {
@@ -186,6 +190,8 @@ model Trade {
   importBatchId    String?
   importBatch      ImportBatch? @relation(fields: [importBatchId], references: [id])
   initialPlannedRiskUsd Float?
+  brokerCommission Float?  // informational: already included in profitLoss
+  brokerSwap       Float?  // informational: already included in profitLoss
   rStatus          String   @default("VALID")
   dataQualityStatus String  @default("VERIFIED")
 

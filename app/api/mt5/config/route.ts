@@ -1,33 +1,35 @@
+import { randomBytes } from 'crypto';
 import { NextResponse } from 'next/server';
 import prisma from '@/lib/db';
 import { getUserId, unauthorized } from '@/lib/auth';
 import { getOrCreateSettings } from '@/lib/user-settings';
 
-const DEFAULT_CONFIG = { account: '', password: '', server: 'Exness-MT5Real27' };
-
+// Webhook token for the YafiSync EA. (The old Python-bridge login/password
+// storage was removed: the EA needs no MT5 password.)
 export async function GET() {
     const userId = await getUserId();
     if (!userId) return unauthorized();
     try {
         const settings = await getOrCreateSettings(userId);
-        const config = (settings.mt5Config as Record<string, unknown> | null) ?? DEFAULT_CONFIG;
-        return NextResponse.json({ ...config, webhookToken: settings.webhookToken });
+        return NextResponse.json({ webhookToken: settings.webhookToken });
     } catch (err: any) {
         return NextResponse.json({ error: err.message }, { status: 500 });
     }
 }
 
+// POST { action: "regenerate" } issues a new token; the old one stops working.
 export async function POST(request: Request) {
     const userId = await getUserId();
     if (!userId) return unauthorized();
     try {
-        const { account = '', password = '', server = '' } = await request.json();
+        const { action } = await request.json().catch(() => ({}));
+        if (action !== 'regenerate') return NextResponse.json({ error: 'Unknown action' }, { status: 400 });
         await getOrCreateSettings(userId);
-        await prisma.userSettings.update({
+        const settings = await prisma.userSettings.update({
             where: { userId },
-            data: { mt5Config: { account: String(account), password: String(password), server: String(server) } },
+            data: { webhookToken: randomBytes(24).toString('hex'), mt5Config: undefined },
         });
-        return NextResponse.json({ success: true });
+        return NextResponse.json({ webhookToken: settings.webhookToken });
     } catch (err: any) {
         return NextResponse.json({ error: err.message }, { status: 500 });
     }

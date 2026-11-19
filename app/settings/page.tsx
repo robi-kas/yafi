@@ -2,6 +2,7 @@
 
 import React, { useRef, useState, useEffect, Suspense } from "react"
 import { ProfileSettings } from "@/components/settings/profile-settings"
+import { Mt5SyncSettings } from "@/components/settings/mt5-sync-settings"
 import { DashboardLayout } from "@/components/dashboard/dashboard-layout"
 import { useDashboard, Trade } from "@/context/dashboard-context"
 import { getWinLossCounts, calculateWinRate } from "@/lib/trading-metrics"
@@ -40,125 +41,6 @@ export default function SettingsPage() {
     const [importStatus, setImportStatus] = useState<string | null>(null)
     const [exporting, setExporting] = useState<'json' | 'pdf' | null>(null)
     const [importResult, setImportResult] = useState<{ success: number; errors: string[] } | null>(null)
-
-    // MT5 Sync State
-    const [mt5Account, setMt5Account] = useState("")
-    const [mt5Password, setMt5Password] = useState("")
-    const [mt5Server, setMt5Server] = useState("Exness-MT5Real27")
-    const [syncPeriod, setSyncPeriod] = useState("30days")
-    const [customFrom, setCustomFrom] = useState("")
-    const [customTo, setCustomTo] = useState("")
-    const [syncingMt5, setSyncingMt5] = useState(false)
-    const [webhookToken, setWebhookToken] = useState("")
-
-    // Load saved MT5 credentials on mount from backend
-    useEffect(() => {
-        fetch('/api/mt5/config')
-            .then(res => res.json())
-            .then(data => {
-                if (data.account) setMt5Account(data.account)
-                if (data.password) setMt5Password(data.password)
-                if (data.server) setMt5Server(data.server)
-                if (data.webhookToken) setWebhookToken(data.webhookToken)
-            })
-            .catch(console.error)
-    }, [])
-
-    const saveCredentials = async () => {
-        try {
-            await fetch('/api/mt5/config', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ account: mt5Account, password: mt5Password, server: mt5Server })
-            })
-            addNotification({ title: 'Saved', message: 'MT5 settings saved to your account', type: 'success' })
-        } catch (e) {
-            addNotification({ title: 'Error', message: 'Failed to save credentials', type: 'error' })
-        }
-    }
-
-    const handleSyncMT5 = async () => {
-        if (!mt5Account || !mt5Password || !mt5Server) {
-            addNotification({ title: 'Missing Fields', message: 'Please enter account, password, and server', type: 'error' })
-            return
-        }
-        
-        if (syncPeriod === 'custom' && (!customFrom || !customTo)) {
-            addNotification({ title: 'Missing Dates', message: 'Please select both start and end dates', type: 'error' })
-            return
-        }
-        
-        // Save for future use
-        saveCredentials()
-        
-        let fromDate = new Date()
-        let toDate = new Date()
-        
-        switch (syncPeriod) {
-            case "today":
-                fromDate.setHours(0, 0, 0, 0)
-                break
-            case "yesterday":
-                fromDate.setDate(fromDate.getDate() - 1)
-                fromDate.setHours(0, 0, 0, 0)
-                toDate.setDate(toDate.getDate() - 1)
-                toDate.setHours(23, 59, 59, 999)
-                break
-            case "week":
-                fromDate.setDate(fromDate.getDate() - fromDate.getDay())
-                fromDate.setHours(0, 0, 0, 0)
-                break
-            case "month":
-                fromDate.setDate(1)
-                fromDate.setHours(0, 0, 0, 0)
-                break
-            case "year":
-                fromDate.setMonth(0, 1)
-                fromDate.setHours(0, 0, 0, 0)
-                break
-            case "custom":
-                fromDate = new Date(customFrom)
-                fromDate.setHours(0, 0, 0, 0)
-                toDate = new Date(customTo)
-                toDate.setHours(23, 59, 59, 999)
-                break
-            case "30days":
-            default:
-                fromDate.setDate(fromDate.getDate() - 30)
-                break
-        }
-        
-        const formatLocalISO = (d: Date) => {
-            const pad = (n: number) => n.toString().padStart(2, '0');
-            return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}:00`;
-        };
-
-        setSyncingMt5(true)
-        try {
-            const res = await fetch('/api/mt5/sync', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ 
-                    account: mt5Account, 
-                    password: mt5Password, 
-                    server: mt5Server,
-                    fromDate: formatLocalISO(fromDate),
-                    toDate: formatLocalISO(toDate)
-                })
-            })
-            const data = await res.json()
-            if (!res.ok) throw new Error(data.error || 'Failed to sync')
-            
-            addNotification({ title: 'MT5 Sync Complete', message: `Found ${data.totalDealsFound} deals. Synced ${data.saved} new trades!`, type: 'success' })
-            if (data.saved > 0) {
-                await refreshMetrics()
-            }
-        } catch (err: any) {
-            addNotification({ title: 'MT5 Sync Failed', message: err.message, type: 'error' })
-        } finally {
-            setSyncingMt5(false)
-        }
-    }
 
     const handleExportJSON = async () => {
         setExporting('json')
@@ -439,9 +321,6 @@ export default function SettingsPage() {
         }
     }
 
-    const webhookUrl = webhookToken && typeof window !== "undefined"
-        ? `${window.location.origin}/api/mt5/webhook?token=${webhookToken}`
-        : ""
 
     const Row = ({ title, description, children, className }: { title: React.ReactNode; description?: React.ReactNode; children?: React.ReactNode; className?: string }) => (
         <div className={cn("flex flex-col gap-3 py-4 first:pt-0 last:pb-0 sm:flex-row sm:items-center sm:justify-between", className)}>
@@ -477,88 +356,8 @@ export default function SettingsPage() {
                         </PanelBody>
                     </Panel>
 
-                    {/* MT5 */}
-                    <Panel>
-                        <PanelHeader title="MT5 connection" description="Sync your trading history from MetaTrader 5" icon={Server} />
-                        <PanelBody className="space-y-5">
-                            <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
-                                <div className="space-y-1.5">
-                                    <Label htmlFor="mt5-account">Account number</Label>
-                                    <Input id="mt5-account" className="font-mono" value={mt5Account} onChange={(e) => setMt5Account(e.target.value)} placeholder="e.g. 12345678" />
-                                </div>
-                                <div className="space-y-1.5">
-                                    <Label htmlFor="mt5-password">Investor password</Label>
-                                    <Input id="mt5-password" type="password" value={mt5Password} onChange={(e) => setMt5Password(e.target.value)} placeholder="Read-only password" autoComplete="off" />
-                                </div>
-                                <div className="space-y-1.5">
-                                    <Label htmlFor="mt5-server">Server</Label>
-                                    <Input id="mt5-server" value={mt5Server} onChange={(e) => setMt5Server(e.target.value)} placeholder="e.g. Exness-MT5Real27" />
-                                </div>
-                                <div className="space-y-1.5">
-                                    <Label>Time period</Label>
-                                    <Select value={syncPeriod} onValueChange={setSyncPeriod}>
-                                        <SelectTrigger className="w-full"><SelectValue /></SelectTrigger>
-                                        <SelectContent>
-                                            <SelectItem value="today">Today</SelectItem>
-                                            <SelectItem value="yesterday">Yesterday</SelectItem>
-                                            <SelectItem value="week">This week</SelectItem>
-                                            <SelectItem value="month">This month</SelectItem>
-                                            <SelectItem value="year">This year</SelectItem>
-                                            <SelectItem value="30days">Last 30 days</SelectItem>
-                                            <SelectItem value="custom">Custom range</SelectItem>
-                                        </SelectContent>
-                                    </Select>
-                                </div>
-                                {syncPeriod === 'custom' && (
-                                    <>
-                                        <div className="space-y-1.5">
-                                            <Label htmlFor="mt5-from">Start date</Label>
-                                            <Input id="mt5-from" type="date" value={customFrom} onChange={(e) => setCustomFrom(e.target.value)} />
-                                        </div>
-                                        <div className="space-y-1.5">
-                                            <Label htmlFor="mt5-to">End date</Label>
-                                            <Input id="mt5-to" type="date" value={customTo} onChange={(e) => setCustomTo(e.target.value)} />
-                                        </div>
-                                    </>
-                                )}
-                            </div>
-
-                            <p className="text-xs text-muted-foreground">
-                                Direct sync needs the MT5 bridge running on a Windows machine with MetaTrader 5 installed; it isn&apos;t available on the hosted site yet.
-                            </p>
-
-                            <div className="flex flex-wrap justify-end gap-2">
-                                <Button variant="outline" onClick={saveCredentials}>
-                                    <Database /> Save settings
-                                </Button>
-                                <Button onClick={handleSyncMT5} disabled={syncingMt5}>
-                                    {syncingMt5 ? <Loader2 className="animate-spin" /> : <RefreshCw />}
-                                    {syncingMt5 ? 'Syncing…' : 'Sync trades'}
-                                </Button>
-                            </div>
-
-                            {webhookUrl && (
-                                <div className="rounded-lg border border-border bg-background/40 p-4">
-                                    <p className="text-sm font-medium">Webhook URL for the MT5 Expert Advisor</p>
-                                    <p className="mt-0.5 text-xs text-muted-foreground">Private to your account. Anyone with this URL can add trades to your journal, so don&apos;t share it.</p>
-                                    <div className="mt-3 flex gap-2">
-                                        <Input readOnly value={webhookUrl} className="font-mono text-xs" onFocus={(e) => e.currentTarget.select()} />
-                                        <Button
-                                            variant="outline"
-                                            size="icon"
-                                            title="Copy"
-                                            onClick={async () => {
-                                                await navigator.clipboard.writeText(webhookUrl)
-                                                addNotification({ title: 'Copied', message: 'Webhook URL copied to clipboard', type: 'success' })
-                                            }}
-                                        >
-                                            <Copy className="size-4" />
-                                        </Button>
-                                    </div>
-                                </div>
-                            )}
-                        </PanelBody>
-                    </Panel>
+                    {/* MT5 auto-sync */}
+                    <Mt5SyncSettings />
 
                     {/* Data */}
                     <Panel>
